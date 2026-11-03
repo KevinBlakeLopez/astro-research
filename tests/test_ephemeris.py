@@ -22,15 +22,6 @@ from astro_research.ephemeris import (
     verify_ephemeris,
 )
 
-REPO_EPHE = Path(__file__).resolve().parents[1] / "ephe"
-
-
-@pytest.fixture
-def fetched_ephe() -> Path:
-    if not REPO_EPHE.is_dir():
-        pytest.fail("ephe/ is missing: run `uv run python scripts/fetch_ephemeris.py`")
-    return REPO_EPHE
-
 
 @pytest.fixture
 def ephe_copy(fetched_ephe: Path, tmp_path: Path) -> Path:

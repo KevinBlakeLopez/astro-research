@@ -1,0 +1,25 @@
+# Swiss Ephemeris data files this engine is pinned to. Fetch them with
+#   uv run python scripts/fetch_ephemeris.py
+# Changing anything here changes calculation results: treat it as a versioned decision.
+#
+# Build: DE441, created for Astrodienst 2026/05/26. The earlier 2026/04/14 build returns a wrong
+# Mercury (up to ~104 degrees) for the first weeks of sepl_18 without any warning, so the build
+# is pinned by hash, not by name.
+
+de_number = 441
+source_commit = "cae9ecd4b201544d85e411aced17660932514d43"  # aloistr/swisseph, 2026-05-29
+url_template = "https://raw.githubusercontent.com/aloistr/swisseph/{commit}/ephe/{name}"
+
+[[files]]
+name = "sepl_18.se1"
+covers = "planets, 1800-01-01 to 2400-01-10 TT"
+size = 484061
+sha256 = "ca1393ceab3a44fbc895887cf789c68819ae6a1cbc9b22225872dbe4ccd99a66"
+header = "Created for Astrodienst in Switzerland 2026/05/26, based on JPL Ephemeris DE441."
+
+[[files]]
+name = "semo_18.se1"
+covers = "Moon, 1799-12-23 to 2400-01-15 TT"
+size = 1304771
+sha256 = "1ca07bd67c24374d77226180c20a4f9996cba013697894810518e7eb582ca4f7"
+header = "Created for Astrodienst in Switzerland 2026/05/26, based on JPL Ephemeris DE441."

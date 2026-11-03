@@ -37,7 +37,7 @@ known-first-party = ["astro_research"]
 
 [tool.mypy]
 strict = true
-files = ["src", "tests"]
+files = ["src", "tests", "scripts"]
 
 [[tool.mypy.overrides]]
 # pysweph ships no type information; the adapter converts its results to typed values.

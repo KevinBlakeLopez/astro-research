@@ -6,3 +6,6 @@ __pycache__/
 .pytest_cache/
 dist/
 *.egg-info/
+
+# Swiss Ephemeris data, fetched by scripts/fetch_ephemeris.py
+/ephe/

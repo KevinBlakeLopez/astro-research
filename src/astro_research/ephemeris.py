@@ -21,6 +21,7 @@ import importlib.resources
 import os
 import re
 import tomllib
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import assert_never
@@ -29,10 +30,27 @@ import swisseph as swe
 
 from astro_research.astronomical_time import AstronomicalTime, TimeScale
 from astro_research.civil_time import ResolvedInstant
+from astro_research.positions import POSITION_CONVENTIONS, Body, BodyPosition, Positions
 
 _PROBE_JD_UT = 2451545.0  # 2000-01-01 12:00 UT, inside the pinned files
 _active_folder: Path | None = None  # the verified folder Swiss Ephemeris currently points at
 _OPEN = object()  # only Ephemeris.open() holds this, so only it can construct a handle
+_SE_BODY = {
+    Body.SUN: swe.SUN,
+    Body.MOON: swe.MOON,
+    Body.MERCURY: swe.MERCURY,
+    Body.VENUS: swe.VENUS,
+    Body.MARS: swe.MARS,
+    Body.JUPITER: swe.JUPITER,
+    Body.SATURN: swe.SATURN,
+    Body.URANUS: swe.URANUS,
+    Body.NEPTUNE: swe.NEPTUNE,
+    Body.PLUTO: swe.PLUTO,
+}
+# Swiss Ephemeris's defaults are the adopted conventions (see positions.py); only the data
+# source (the verified files) and, for the ecliptic call, speeds are requested explicitly.
+_ECLIPTIC_FLAGS = swe.FLG_SWIEPH | swe.FLG_SPEED
+_EQUATORIAL_FLAGS = swe.FLG_SWIEPH | swe.FLG_EQUATORIAL
 
 
 class EphemerisEnvironmentError(RuntimeError):
@@ -53,6 +71,10 @@ class EphemerisNotLoaded(EphemerisEnvironmentError):
 
 class StaleEphemeris(EphemerisEnvironmentError):
     """The process-wide data path has moved since this handle was opened."""
+
+
+class DateOutsideEphemeris(EphemerisEnvironmentError):
+    """The requested date needs data files the manifest does not pin."""
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -234,6 +256,33 @@ class Ephemeris:
             ut1_minus_utc_s=(jd_ut1 - clock) * 86400,
         )
 
+    def positions(self, time: AstronomicalTime, bodies: Iterable[Body] = tuple(Body)) -> Positions:
+        """Apparent geocentric positions at `time`'s TT; duplicates in `bodies` are dropped."""
+        self._require_active()
+        computed = []
+        for body in dict.fromkeys(bodies):
+            ecliptic = _calc(time.jd_tt, body, _ECLIPTIC_FLAGS)
+            equatorial = _calc(time.jd_tt, body, _EQUATORIAL_FLAGS)
+            computed.append(
+                BodyPosition(
+                    body=body,
+                    longitude=ecliptic[0],
+                    latitude=ecliptic[1],
+                    distance_au=ecliptic[2],
+                    longitude_speed=ecliptic[3],
+                    latitude_speed=ecliptic[4],
+                    distance_speed=ecliptic[5],
+                    right_ascension=equatorial[0],
+                    declination=equatorial[1],
+                )
+            )
+        return Positions(
+            time=time,
+            ephemeris=self._provenance,
+            conventions=POSITION_CONVENTIONS,
+            bodies=tuple(computed),
+        )
+
     def _require_active(self) -> None:
         if _active_folder != self._folder:
             raise StaleEphemeris(
@@ -241,3 +290,13 @@ class Ephemeris:
             )
         if "SE_EPHE_PATH" in os.environ:
             raise EphemerisNotLoaded("SE_EPHE_PATH is set and overrides the verified folder")
+
+
+def _calc(jd_tt: float, body: Body, flags: int) -> tuple[float, ...]:
+    position, retflag, serr = swe.calc(jd_tt, _SE_BODY[body], flags)
+    if not retflag & swe.FLG_SWIEPH:
+        # Swiss Ephemeris would quietly continue with its Moshier model.
+        raise DateOutsideEphemeris(f"{body.value} at JD {jd_tt} TT: {serr.strip()}")
+    if serr:
+        raise EphemerisNotLoaded(f"{body.value} at JD {jd_tt} TT: {serr.strip()}")
+    return tuple(position)

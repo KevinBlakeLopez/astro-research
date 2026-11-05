@@ -28,8 +28,10 @@ from typing import assert_never
 
 import swisseph as swe
 
+from astro_research.angles import ANGLE_CONVENTIONS, Angles, AnglesUndefined
 from astro_research.astronomical_time import AstronomicalTime, TimeScale
 from astro_research.civil_time import ResolvedInstant
+from astro_research.geo import GeoPosition
 from astro_research.positions import POSITION_CONVENTIONS, Body, BodyPosition, Positions
 
 _PROBE_JD_UT = 2451545.0  # 2000-01-01 12:00 UT, inside the pinned files
@@ -281,6 +283,35 @@ class Ephemeris:
             ephemeris=self._provenance,
             conventions=POSITION_CONVENTIONS,
             bodies=tuple(computed),
+        )
+
+    def angles(self, time: AstronomicalTime, place: GeoPosition) -> Angles:
+        """The chart's angles at `time`'s UT1 for `place`; refused at the geographic poles."""
+        self._require_active()
+        if abs(place.latitude) == 90.0:
+            raise AnglesUndefined(f"the angles are undefined at latitude {place.latitude}")
+        # The angles do not depend on the house system; Equal houses never fail at high
+        # latitude, whereas Placidus and Koch raise beyond the polar circles (observed).
+        _cusps, ascmc, _cusp_speeds, speeds = swe.houses_ex2(
+            time.jd_ut1, place.latitude, place.longitude, b"E", swe.FLG_SWIEPH
+        )
+        true_obliquity = swe.calc(time.jd_tt, swe.ECL_NUT, 0)[0][0]
+        return Angles(
+            time=time,
+            place=place,
+            ephemeris=self._provenance,
+            conventions=ANGLE_CONVENTIONS,
+            armc=ascmc[2],
+            armc_speed=speeds[2],
+            ascendant=ascmc[0],
+            ascendant_speed=speeds[0],
+            midheaven=ascmc[1],
+            midheaven_speed=speeds[1],
+            descendant=(ascmc[0] + 180) % 360,
+            imum_coeli=(ascmc[1] + 180) % 360,
+            vertex=ascmc[3],
+            vertex_speed=speeds[3],
+            beyond_polar_circle=abs(place.latitude) > 90 - true_obliquity,
         )
 
     def _require_active(self) -> None:

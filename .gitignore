@@ -9,3 +9,6 @@ dist/
 
 # Swiss Ephemeris data, fetched by scripts/fetch_ephemeris.py
 /ephe/
+
+# Local working notes (measurements, decisions); edited into docs/ before anything is committed
+/docs/working-notes/

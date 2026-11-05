@@ -15,6 +15,7 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
     "mypy>=2.4.1",
+    "pyerfa>=2.0.1.5",
     "pytest>=9.2.0",
     "ruff>=0.17.3",
 ]
@@ -40,8 +41,9 @@ strict = true
 files = ["src", "tests", "scripts"]
 
 [[tool.mypy.overrides]]
-# pysweph ships no type information; the adapter converts its results to typed values.
-module = ["swisseph"]
+# pysweph and pyerfa ship no type information. The adapter converts Swiss Ephemeris results to
+# typed values; ERFA is used only by the test reference pipeline.
+module = ["swisseph", "erfa"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

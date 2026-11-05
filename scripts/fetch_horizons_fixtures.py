@@ -3,8 +3,10 @@
     uv run python scripts/fetch_horizons_fixtures.py
 
 Writes tests/fixtures/horizons_astrometric.json: geocentric astrometric RA/Dec (ICRF, corrected
-for light-time only; Horizons quantity 1) at fixed TT instants. That frame involves no
-precession-nutation model, so it compares ephemeris data and light-time directly.
+for light-time only; Horizons quantity 1) and the light-time-corrected distance (quantity 20) at
+fixed TT instants. That frame involves no precession-nutation model, so it compares ephemeris
+data and light-time directly. The distance lets the layer 3 reference pipeline compute light
+deflection without taking anything from Swiss Ephemeris.
 
 Run once and commit the output; the tests read the file offline. Rerun only deliberately, e.g.
 when the fixture dates or bodies change, and review the diff.
@@ -69,7 +71,7 @@ def query(command: str, jds: list[float]) -> tuple[dict[str, str], list[str]]:
         "TIME_TYPE": "'TT'",
         "TLIST_TYPE": "'JD'",
         "TLIST": "'" + " ".join(f"{jd:.1f}" for jd in jds) + "'",
-        "QUANTITIES": "'1'",
+        "QUANTITIES": "'1,20'",
         "ANG_FORMAT": "'DEG'",
         "EXTRA_PREC": "'YES'",
         "CSV_FORMAT": "'YES'",
@@ -88,20 +90,31 @@ def main() -> int:
     for name, command in BODIES.items():
         signature, lines = query(command, jds)
         source = re.search(r"Target body name:.*\{source: (\S+)\}", "\n".join(lines))
-        rows = lines[lines.index("$$SOE") + 1 : lines.index("$$EOE")]
+        start = lines.index("$$SOE")
+        rows = lines[start + 1 : lines.index("$$EOE")]
         if source is None or len(rows) != len(jds):
             print(f"unexpected response for {name}: {len(rows)} rows", file=sys.stderr)
             return 1
+        header = [h.strip() for h in lines[start - 2].split(",")]
         values = []
         for date, jd, row in zip(DATES, jds, rows, strict=True):
-            cells = [c.strip() for c in row.split(",")]
-            values.append({"date": date, "jd_tt": jd, "ra_deg": cells[3], "dec_deg": cells[4]})
+            cells = dict(zip(header, (c.strip() for c in row.split(",")), strict=False))
+            values.append(
+                {
+                    "date": date,
+                    "jd_tt": jd,
+                    "ra_deg": cells["R.A.___(ICRF)"],
+                    "dec_deg": cells["DEC____(ICRF)"],
+                    "delta_au": cells["delta"],
+                }
+            )
         bodies[name] = {"command": command, "source": source.group(1), "rows": values}
         print(f"{name:8} {command:>4}  {source.group(1)}  {len(values)} rows")
 
     fixture = {
         "description": "Geocentric astrometric RA/Dec, ICRF, corrected for down-leg light-time "
-        "only (JPL Horizons quantity 1), at 12:00 TT. Values are copied as printed.",
+        "only (JPL Horizons quantity 1), and distance delta in AU at the light-time-corrected "
+        "instant (quantity 20), at 12:00 TT. Values are copied as printed.",
         "retrieved_utc": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "api": API,
         "api_signature": signature,
@@ -109,7 +122,7 @@ def main() -> int:
             "EPHEM_TYPE": "OBSERVER",
             "CENTER": "500@399",
             "TIME_TYPE": "TT",
-            "QUANTITIES": "1",
+            "QUANTITIES": "1,20",
             "ANG_FORMAT": "DEG",
             "EXTRA_PREC": "YES",
         },

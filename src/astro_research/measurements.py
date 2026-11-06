@@ -4,7 +4,7 @@ Only continuous numbers: no orbs, no aspect flags, no applying/separating labels
 Those are rules a researcher applies on top. This module never imports `swisseph`, so it works
 on any stored chart.
 
-Conventions:
+Conventions, recorded in every chart as `MEASUREMENT_CONVENTIONS`:
 - separations use ecliptic longitude, as zodiacal aspects do. `great_circle_separation` is the
   true angle on the sky, latitude included;
 - the signed longitude difference is b - a, in (-180, 180]; `separation` is its absolute value;
@@ -31,6 +31,13 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:  # type-only imports: measurements need values, not the modules that make them
     from astro_research.angles import Angles
     from astro_research.positions import Body, LunarPoint, Positions
+
+MEASUREMENT_CONVENTIONS = (
+    "measurements-v1: separations in ecliptic longitude, signed difference b - a in (-180, 180]; "
+    "deviation = separation - aspect angle; rates per day, negative while closing; parallels by "
+    "declination difference and sum; points are the bodies and lunar points, then Ascendant, MC "
+    "and Vertex (no Descendant or IC); angle declinations from the true obliquity"
+)
 
 MAJOR = (0.0, 60.0, 90.0, 120.0, 180.0)
 OCTILE = (45.0, 90.0, 135.0, 180.0)
@@ -113,12 +120,18 @@ def measure(
     points: Sequence[ChartPoint], aspect_angles: Sequence[float]
 ) -> tuple[PairMeasurement, ...]:
     """Every unordered pair of `points`, in order, against every angle in `aspect_angles`."""
+    angles = validated_aspect_angles(aspect_angles)
+    return tuple(_measure_pair(a, b, angles) for i, a in enumerate(points) for b in points[i + 1 :])
+
+
+def validated_aspect_angles(aspect_angles: Sequence[float]) -> tuple[float, ...]:
+    """The angles as floats; ValueError unless each lies within 0-180 degrees and none repeats."""
     angles = tuple(float(angle) for angle in aspect_angles)
     if any(not 0.0 <= angle <= 180.0 for angle in angles):
         raise ValueError(f"aspect angles must lie within 0-180 degrees: {angles}")
     if len(set(angles)) != len(angles):
         raise ValueError(f"aspect angles must be distinct: {angles}")
-    return tuple(_measure_pair(a, b, angles) for i, a in enumerate(points) for b in points[i + 1 :])
+    return angles
 
 
 def _measure_pair(a: ChartPoint, b: ChartPoint, angles: tuple[float, ...]) -> PairMeasurement:

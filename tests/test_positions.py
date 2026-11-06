@@ -86,10 +86,14 @@ def test_values_are_swiss_ephemeris_defaults_unrounded(eph: Ephemeris, body: Bod
     p = eph.positions(time, [body])[body]
     se_body = getattr(swisseph, body.name)
     ecl, _, _ = swisseph.calc(time.jd_tt, se_body, swisseph.FLG_SWIEPH | swisseph.FLG_SPEED)
-    equ, _, _ = swisseph.calc(time.jd_tt, se_body, swisseph.FLG_SWIEPH | swisseph.FLG_EQUATORIAL)
+    # Requesting speeds changes RA/Dec only by float rounding (< 1e-6 mas, measured).
+    equ, _, _ = swisseph.calc(
+        time.jd_tt, se_body, swisseph.FLG_SWIEPH | swisseph.FLG_EQUATORIAL | swisseph.FLG_SPEED
+    )
     assert (p.longitude, p.latitude, p.distance_au) == tuple(ecl[:3])
     assert (p.longitude_speed, p.latitude_speed, p.distance_speed) == tuple(ecl[3:])
     assert (p.right_ascension, p.declination) == tuple(equ[:2])
+    assert (p.right_ascension_speed, p.declination_speed) == tuple(equ[3:5])
 
 
 def test_equatorial_and_ecliptic_describe_the_same_direction(eph: Ephemeris) -> None:

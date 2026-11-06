@@ -283,6 +283,7 @@ def test_result_records_its_inputs_and_conventions(eph: Ephemeris) -> None:
     assert angles.place is PLACES["london"]
     assert angles.ephemeris == eph.provenance
     assert angles.conventions == ANGLE_CONVENTIONS
+    assert angles.true_obliquity == swisseph.calc(time.jd_tt, swisseph.ECL_NUT, 0)[0][0]
 
 
 def test_angles_refuse_after_the_data_path_moves(

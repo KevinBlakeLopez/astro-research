@@ -61,9 +61,10 @@ _SE_POINT: dict[Point, int] = {
     LunarPoint.OSCULATING_APOGEE: swe.OSCU_APOG,
 }
 # Swiss Ephemeris's defaults are the adopted conventions (see positions.py); only the data
-# source (the verified files) and, for the ecliptic call, speeds are requested explicitly.
+# source (the verified files) and speeds are requested explicitly. Requesting speeds changes the
+# equatorial values only by float rounding (< 1e-6 mas, measured).
 _ECLIPTIC_FLAGS = swe.FLG_SWIEPH | swe.FLG_SPEED
-_EQUATORIAL_FLAGS = swe.FLG_SWIEPH | swe.FLG_EQUATORIAL
+_EQUATORIAL_FLAGS = swe.FLG_SWIEPH | swe.FLG_EQUATORIAL | swe.FLG_SPEED
 
 
 class EphemerisEnvironmentError(RuntimeError):
@@ -290,6 +291,8 @@ class Ephemeris:
                     distance_speed=ecliptic[5],
                     right_ascension=equatorial[0],
                     declination=equatorial[1],
+                    right_ascension_speed=equatorial[3],
+                    declination_speed=equatorial[4],
                 )
             )
         return Positions(
@@ -325,6 +328,7 @@ class Ephemeris:
             imum_coeli=(ascmc[1] + 180) % 360,
             vertex=ascmc[3],
             vertex_speed=speeds[3],
+            true_obliquity=true_obliquity,
             beyond_polar_circle=abs(place.latitude) > 90 - true_obliquity,
         )
 

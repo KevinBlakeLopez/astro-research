@@ -70,11 +70,14 @@ def test_values_are_swiss_ephemeris_defaults_unrounded(eph: Ephemeris, point: Lu
         time.jd_tt, SE_POINTS[point], swisseph.FLG_SWIEPH | swisseph.FLG_SPEED
     )
     equ, _, _ = swisseph.calc(
-        time.jd_tt, SE_POINTS[point], swisseph.FLG_SWIEPH | swisseph.FLG_EQUATORIAL
+        time.jd_tt,
+        SE_POINTS[point],
+        swisseph.FLG_SWIEPH | swisseph.FLG_EQUATORIAL | swisseph.FLG_SPEED,
     )
     assert (p.longitude, p.latitude, p.distance_au) == tuple(ecl[:3])
     assert (p.longitude_speed, p.latitude_speed, p.distance_speed) == tuple(ecl[3:])
     assert (p.right_ascension, p.declination) == tuple(equ[:2])
+    assert (p.right_ascension_speed, p.declination_speed) == tuple(equ[3:5])
 
 
 # --- Latitudes ----------------------------------------------------------------------------

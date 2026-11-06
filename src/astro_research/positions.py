@@ -72,6 +72,8 @@ class BodyPosition:
     distance_speed: float  # AU per day
     right_ascension: float  # true equator and equinox of date
     declination: float
+    right_ascension_speed: float  # degrees per day
+    declination_speed: float
 
 
 @dataclass(frozen=True, kw_only=True)

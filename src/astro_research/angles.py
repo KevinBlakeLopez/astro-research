@@ -53,4 +53,5 @@ class Angles:
     imum_coeli: float  # midheaven + 180
     vertex: float
     vertex_speed: float
+    true_obliquity: float  # degrees, of date; gives the angles' declinations
     beyond_polar_circle: bool  # |latitude| > 90 - true obliquity of date

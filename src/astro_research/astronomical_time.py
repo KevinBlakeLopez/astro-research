@@ -23,7 +23,7 @@ class InstantInLeapSecond(ValueError):
 
 class TimeScale(enum.Enum):
     CLOCK_AS_UT1 = "clock_as_ut1"
-    """The UTC clock reading is used as UT1, as most astrology software does."""
+    """The UTC clock reading is used as UT1 (Immanuel does this, observed)."""
 
     UT1_FROM_DELTA_T = "ut1_from_delta_t"
     """UTC -> TT exactly via leap seconds; UT1 = TT - delta-T (Swiss Ephemeris's model)."""

@@ -209,6 +209,31 @@ def test_angle_contacts_are_the_pairs_that_involve_an_angle(twins: tuple[Chart, 
 # --- Twins a minute apart -------------------------------------------------------------------
 
 
+def test_twins_a_second_apart(eph: Ephemeris) -> None:
+    # Records to the second: 04:25:00 and 04:25:01 BST.
+    second = replace(
+        TWIN_A,
+        time=ZonedLocalTime(local=datetime(1987, 6, 15, 4, 25, 1), zone="Europe/London"),
+        time_resolution=TimeResolution.SECOND,
+    )
+    a = compute_chart(eph, replace(TWIN_A, time_resolution=TimeResolution.SECOND), SETTINGS)
+    b = compute_chart(eph, second, SETTINGS)
+    comparison = compare(a, b)
+    assert comparison.utc_seconds == 1.0
+    jd_rounding_s = 4 * math.ulp(a.time.jd_tt) * 86400
+    assert comparison.tt_seconds == pytest.approx(1.0, abs=jd_rounding_s)
+    # Over one second, the Ascendant's mean speed, taken over the UT1 interval the two charts
+    # were computed at, lies between its speeds at the two ends (measured: half-way for this
+    # record; 0.35-0.53 of the way over 12 cases). The interval must be the charts' own: one
+    # second carries Julian-date rounding of a few microseconds, a 5e-6 relative error. The MC,
+    # Vertex and Moon change speed by less than Swiss Ephemeris's speed precision in one second
+    # (measured outside the band in 1-4 of 12 cases), so a minute is needed for them.
+    (ascendant,) = (p for p in comparison.points if p.point is ChartAngle.ASCENDANT)
+    mean_speed = ascendant.longitude / (b.time.jd_ut1 - a.time.jd_ut1)
+    low, high = sorted((ascendant.a.longitude_speed, ascendant.b.longitude_speed))
+    assert low < mean_speed < high
+
+
 def test_twins_a_minute_apart_are_sixty_seconds_apart(twins: tuple[Chart, Chart]) -> None:
     a, b = twins
     comparison = compare(a, b)

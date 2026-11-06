@@ -23,3 +23,13 @@ covers = "Moon, 1799-12-23 to 2400-01-15 TT"
 size = 1304771
 sha256 = "1ca07bd67c24374d77226180c20a4f9996cba013697894810518e7eb582ca4f7"
 header = "Created for Astrodienst in Switzerland 2026/05/26, based on JPL Ephemeris DE441."
+
+# The fixed-star catalogue: ICRS positions, proper motions, radial velocities and parallaxes.
+# Swiss Ephemeris reports a star as computed from its files even when the planet files are
+# missing (observed), so the catalogue is checked here like the ephemeris files.
+[[files]]
+name = "sefstars.txt"
+covers = "fixed stars brighter than magnitude 5, 1360 records"
+size = 136618
+sha256 = "18b0dcafbe5b7240773daba2c038a325f5b3fc4163f61e0a7f4e92abd4f517c6"
+header = "sefstars.txt: Swiss Ephemeris fixed stars data file; last change recorded 2-mar-24."

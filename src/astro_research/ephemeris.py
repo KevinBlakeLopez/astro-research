@@ -39,6 +39,13 @@ from astro_research.eclipses import (
     EclipseType,
 )
 from astro_research.geo import GeoPosition
+from astro_research.parans import (
+    Disc,
+    FixedStar,
+    HorizonConvention,
+    HorizonEvent,
+    StarNotFound,
+)
 from astro_research.positions import (
     POSITION_CONVENTIONS,
     Body,
@@ -86,6 +93,35 @@ _LUNAR_TYPE_FLAGS = {
     swe.ECL_PENUMBRAL: EclipseType.PENUMBRAL,
 }
 _NO_SAROS = -99999999  # Swiss Ephemeris's value when it has no saros number
+_RISE_TRANS_EVENT = {
+    HorizonEvent.RISE: swe.CALC_RISE,
+    HorizonEvent.SET: swe.CALC_SET,
+    HorizonEvent.UPPER_TRANSIT: swe.CALC_MTRANSIT,
+    HorizonEvent.LOWER_TRANSIT: swe.CALC_ITRANSIT,
+}
+_RISE_TRANS_DISC = {
+    Disc.UPPER_LIMB: 0,  # Swiss Ephemeris's default
+    Disc.CENTRE: swe.BIT_DISC_CENTER,
+    Disc.LOWER_LIMB: swe.BIT_DISC_BOTTOM,
+}
+# Swiss Ephemeris keeps the first star catalogue it reads for the rest of the process: neither
+# set_ephe_path nor close reloads it (observed). So the check compares one star's catalogue
+# position, as Swiss Ephemeris holds it in memory, with the pinned file's record. Barycentric,
+# ICRS, at J2000.0 TT, with no light-time, aberration, deflection or nutation, it returns the
+# record exactly (observed: 0.000 mas).
+_STAR_PROBE = "alLeo"
+_STAR_CATALOGUE_FLAGS = (
+    swe.FLG_SWIEPH
+    | swe.FLG_EQUATORIAL
+    | swe.FLG_BARYCTR
+    | swe.FLG_ICRS
+    | swe.FLG_J2000
+    | swe.FLG_TRUEPOS
+    | swe.FLG_NOABERR
+    | swe.FLG_NOGDEFL
+    | swe.FLG_NONUT
+)
+_STAR_PROBE_TOLERANCE_DEG = 1e-9  # float conversion of the record's sexagesimal values
 
 
 class EphemerisEnvironmentError(RuntimeError):
@@ -232,6 +268,7 @@ def _verify_loaded(ephe_dir: Path, manifest: EphemerisManifest) -> None:
             raise EphemerisNotLoaded(f"loaded {path}, outside {folder}; is SE_EPHE_PATH set?")
         if de_number != manifest.de_number:
             raise EphemerisNotLoaded(f"{path} is DE{de_number}, not DE{manifest.de_number}")
+    _verify_star_catalogue(folder / "sefstars.txt")
     _active_folder = folder
 
 
@@ -441,6 +478,56 @@ class Ephemeris:
         moon = _calc(jd_tt, Body.MOON, _VECTOR_FLAGS)
         return (sun[0], sun[1], sun[2]), (moon[0], moon[1], moon[2])
 
+    def time_from_ut1(self, jd_ut1: float, time_scale: TimeScale) -> AstronomicalTime:
+        """`time_from_tt` for a UT1 Julian date, as Swiss Ephemeris's rise/set functions return."""
+        self._require_active()
+        return self.time_from_tt(jd_ut1 + _delta_t_days(jd_ut1), time_scale)
+
+    def star_name(self, star: FixedStar) -> str:
+        """The catalogue's name for `star`, e.g. "Regulus,alLeo"."""
+        self._require_active()
+        try:
+            _position, name, _flag = swe.fixstar2_ut(star.designation, _PROBE_JD_UT, swe.FLG_SWIEPH)
+        except swe.Error as error:
+            raise StarNotFound(f"{star.designation}: {error}") from error
+        found: str = name
+        return found
+
+    def rise_trans(
+        self,
+        point: Body | FixedStar,
+        event: HorizonEvent,
+        start_jd_ut1: float,
+        place: GeoPosition,
+        horizon: HorizonConvention,
+    ) -> float | None:
+        """The UT1 Julian date of the next `event` after `start_jd_ut1`, or None when Swiss
+        Ephemeris reports no rising or setting (circumpolar or never rising, it cannot say which).
+
+        Topocentric and in mundo (Swiss Ephemeris's default positions). Swiss Ephemeris falls back
+        to its Moshier model outside the data files without saying so, so callers check dates;
+        resolve a star with `star_name` first, which refuses an unknown one.
+        """
+        self._require_active()
+        rsmi = _RISE_TRANS_EVENT[event]
+        if event in (HorizonEvent.RISE, HorizonEvent.SET):
+            rsmi |= _RISE_TRANS_DISC[horizon.disc]
+        if horizon.refraction is None:
+            rsmi |= swe.BIT_NO_REFRACTION
+            pressure, temperature = 0.0, 0.0  # unused without refraction
+        else:
+            pressure = horizon.refraction.pressure_hpa
+            temperature = horizon.refraction.temperature_c
+        target = point.designation if isinstance(point, FixedStar) else _SE_POINT[point]
+        geopos = (place.longitude, place.latitude, place.elevation_m)
+        code, tret = swe.rise_trans(
+            start_jd_ut1, target, rsmi, geopos, pressure, temperature, swe.FLG_SWIEPH
+        )
+        if code == -2:
+            return None
+        found: float = tret[0]
+        return found
+
     def apparent_longitudes(self, jd_tt: float) -> tuple[float, float, float, float]:
         """Apparent ecliptic longitudes and speeds: (Sun, its speed, Moon, its speed)."""
         self._require_active()
@@ -493,3 +580,28 @@ def _one_flag[T](flags: int, table: dict[int, T]) -> T:
 
 def _saros(value: float) -> int | None:
     return None if value == _NO_SAROS else int(value)
+
+
+def _verify_star_catalogue(catalogue: Path) -> None:
+    """Swiss Ephemeris must hold the pinned catalogue in memory, not one read earlier."""
+    expected = _catalogue_position(catalogue, _STAR_PROBE)
+    position, _name, _flag = swe.fixstar2("," + _STAR_PROBE, 2451545.0, _STAR_CATALOGUE_FLAGS)
+    ra, dec = position[0], position[1]
+    if max(abs(ra - expected[0]), abs(dec - expected[1])) > _STAR_PROBE_TOLERANCE_DEG:
+        raise EphemerisNotLoaded(
+            f"Swiss Ephemeris holds a different star catalogue from {catalogue}: it keeps the "
+            "first one it reads for the whole process; restart with the pinned folder"
+        )
+
+
+def _catalogue_position(catalogue: Path, designation: str) -> tuple[float, float]:
+    """ICRS right ascension and declination (degrees) of the first record for `designation`."""
+    for line in catalogue.read_text(encoding="latin-1").splitlines():
+        fields = [field.strip() for field in line.split(",")]
+        if line.startswith("#") or len(fields) < 9 or fields[1] != designation:
+            continue
+        ra = (float(fields[3]) + float(fields[4]) / 60 + float(fields[5]) / 3600) * 15
+        sign = -1.0 if fields[6].startswith("-") else 1.0
+        dec = sign * (abs(float(fields[6])) + float(fields[7]) / 60 + float(fields[8]) / 3600)
+        return ra, dec
+    raise EphemerisFileError(f"{catalogue} has no record for {designation}")

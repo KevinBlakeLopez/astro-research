@@ -8,6 +8,8 @@ import dataclasses
 import importlib.metadata
 import re
 import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -39,7 +41,7 @@ def ephe_copy(fetched_ephe: Path, tmp_path: Path) -> Path:
 def test_manifest_pins_de441_files_by_hash() -> None:
     manifest = load_manifest()
     assert manifest.de_number == 441
-    assert {f.name for f in manifest.files} == {"sepl_18.se1", "semo_18.se1"}
+    assert {f.name for f in manifest.files} == {"sepl_18.se1", "semo_18.se1", "sefstars.txt"}
     for entry in manifest.files:
         assert re.fullmatch(r"[0-9a-f]{64}", entry.sha256)
         url = manifest.url(entry.name)
@@ -59,6 +61,53 @@ def test_verified_environment_reports_its_provenance(fetched_ephe: Path) -> None
     assert provenance.swisseph_version == "2.10.03"
     assert provenance.source_commit == manifest.source_commit
     assert dict(provenance.file_sha256) == {f.name: f.sha256 for f in manifest.files}
+
+
+def test_the_verified_folder_serves_the_pinned_star_catalogue(fetched_ephe: Path) -> None:
+    # The catalogue is read from the verified folder: its hash is pinned, and Swiss Ephemeris
+    # finds a star in it by designation.
+    entry = next(f for f in load_manifest().files if f.name == "sefstars.txt")
+    assert entry.sha256 == "18b0dcafbe5b7240773daba2c038a325f5b3fc4163f61e0a7f4e92abd4f517c6"
+    verify_ephemeris(fetched_ephe)
+    _position, name, _flag = swisseph.fixstar2_ut(",alLeo", 2451545.0, swisseph.FLG_SWIEPH)
+    assert name == "Regulus,alLeo"
+
+
+def test_a_star_catalogue_read_earlier_in_the_process_is_detected(
+    fetched_ephe: Path, tmp_path: Path
+) -> None:
+    # Swiss Ephemeris keeps the first star catalogue it reads for the whole process, whatever the
+    # data path says later (observed). A fresh process reads an altered catalogue first; the
+    # pinned folder must then be refused.
+    altered = tmp_path / "altered"
+    shutil.copytree(fetched_ephe, altered)
+    catalogue = altered / "sefstars.txt"
+    text = catalogue.read_text(encoding="latin-1")
+    assert text.count(",alLeo,ICRS,10,08,22.31099") >= 1
+    catalogue.write_text(
+        text.replace(",alLeo,ICRS,10,08,22.31099", ",alLeo,ICRS,11,08,22.31099"), encoding="latin-1"
+    )
+    script = (
+        "import sys, swisseph\n"
+        "from pathlib import Path\n"
+        "from astro_research.ephemeris import EphemerisNotLoaded, verify_ephemeris\n"
+        "swisseph.set_ephe_path(sys.argv[1])\n"
+        "swisseph.fixstar2_ut(',alLeo', 2451545.0, swisseph.FLG_SWIEPH)\n"
+        "try:\n"
+        "    verify_ephemeris(Path(sys.argv[2]))\n"
+        "except EphemerisNotLoaded as error:\n"
+        "    print('refused:', error)\n"
+        "else:\n"
+        "    print('accepted')\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script, str(altered), str(fetched_ephe)],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert result.stdout.startswith("refused:"), result.stdout + result.stderr
+    assert "star catalogue" in result.stdout
 
 
 def test_copy_of_the_pinned_files_verifies(ephe_copy: Path) -> None:

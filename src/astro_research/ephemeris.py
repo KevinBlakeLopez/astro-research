@@ -32,12 +32,19 @@ from astro_research.angles import ANGLE_CONVENTIONS, Angles, AnglesUndefined
 from astro_research.astronomical_time import AstronomicalTime, TimeScale
 from astro_research.civil_time import ResolvedInstant
 from astro_research.geo import GeoPosition
-from astro_research.positions import POSITION_CONVENTIONS, Body, BodyPosition, Positions
+from astro_research.positions import (
+    POSITION_CONVENTIONS,
+    Body,
+    BodyPosition,
+    LunarPoint,
+    Point,
+    Positions,
+)
 
 _PROBE_JD_UT = 2451545.0  # 2000-01-01 12:00 UT, inside the pinned files
 _active_folder: Path | None = None  # the verified folder Swiss Ephemeris currently points at
 _OPEN = object()  # only Ephemeris.open() holds this, so only it can construct a handle
-_SE_BODY = {
+_SE_POINT: dict[Point, int] = {
     Body.SUN: swe.SUN,
     Body.MOON: swe.MOON,
     Body.MERCURY: swe.MERCURY,
@@ -48,6 +55,10 @@ _SE_BODY = {
     Body.URANUS: swe.URANUS,
     Body.NEPTUNE: swe.NEPTUNE,
     Body.PLUTO: swe.PLUTO,
+    LunarPoint.MEAN_NODE: swe.MEAN_NODE,
+    LunarPoint.TRUE_NODE: swe.TRUE_NODE,
+    LunarPoint.MEAN_APOGEE: swe.MEAN_APOG,
+    LunarPoint.OSCULATING_APOGEE: swe.OSCU_APOG,
 }
 # Swiss Ephemeris's defaults are the adopted conventions (see positions.py); only the data
 # source (the verified files) and, for the ecliptic call, speeds are requested explicitly.
@@ -258,8 +269,11 @@ class Ephemeris:
             ut1_minus_utc_s=(jd_ut1 - clock) * 86400,
         )
 
-    def positions(self, time: AstronomicalTime, bodies: Iterable[Body] = tuple(Body)) -> Positions:
-        """Apparent geocentric positions at `time`'s TT; duplicates in `bodies` are dropped."""
+    def positions(self, time: AstronomicalTime, bodies: Iterable[Point] = tuple(Body)) -> Positions:
+        """Positions at `time`'s TT of bodies and lunar points; duplicates are dropped.
+
+        The default is the ten bodies; pass `ALL_POINTS` to include the lunar points.
+        """
         self._require_active()
         computed = []
         for body in dict.fromkeys(bodies):
@@ -323,8 +337,8 @@ class Ephemeris:
             raise EphemerisNotLoaded("SE_EPHE_PATH is set and overrides the verified folder")
 
 
-def _calc(jd_tt: float, body: Body, flags: int) -> tuple[float, ...]:
-    position, retflag, serr = swe.calc(jd_tt, _SE_BODY[body], flags)
+def _calc(jd_tt: float, body: Point, flags: int) -> tuple[float, ...]:
+    position, retflag, serr = swe.calc(jd_tt, _SE_POINT[body], flags)
     if not retflag & swe.FLG_SWIEPH:
         # Swiss Ephemeris would quietly continue with its Moshier model.
         raise DateOutsideEphemeris(f"{body.value} at JD {jd_tt} TT: {serr.strip()}")

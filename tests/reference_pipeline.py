@@ -68,20 +68,33 @@ def apparent_position(
     velocity = barycentric["v"] / _C_AU_PER_DAY
     apparent = erfa.ab(direction, velocity, sun_distance, math.sqrt(1 - velocity @ velocity))
 
-    dpsi, deps = erfa.nut06a(d1, d2)
-    mean_obliquity = erfa.obl06(d1, d2)
-    to_true_of_date = erfa.numat(mean_obliquity, dpsi, deps) @ erfa.ltpb(erfa.epj(d1, d2))
-    x, y, z = to_true_of_date @ apparent
-
-    obliquity = mean_obliquity + deps
-    ecliptic_y = y * math.cos(obliquity) + z * math.sin(obliquity)
-    ecliptic_z = -y * math.sin(obliquity) + z * math.cos(obliquity)
+    x, y, z = to_true_equator(jd_tt) @ apparent
+    ex, ey, ez = to_true_ecliptic(jd_tt) @ apparent
     return ReferencePosition(
-        longitude=math.degrees(math.atan2(ecliptic_y, x)) % 360,
-        latitude=math.degrees(math.asin(ecliptic_z)),
+        longitude=math.degrees(math.atan2(ey, ex)) % 360,
+        latitude=math.degrees(math.asin(ez)),
         right_ascension=math.degrees(math.atan2(y, x)) % 360,
         declination=math.degrees(math.asin(z)),
     )
+
+
+def to_true_equator(jd_tt: float) -> np.ndarray:
+    """ICRS -> true equator and equinox of date: Vondrak bias-precession, IAU 2000A nutation."""
+    d1, d2 = _MJD_ZERO, jd_tt - _MJD_ZERO
+    dpsi, deps = erfa.nut06a(d1, d2)
+    matrix: np.ndarray = erfa.numat(erfa.obl06(d1, d2), dpsi, deps) @ erfa.ltpb(erfa.epj(d1, d2))
+    return matrix
+
+
+def to_true_ecliptic(jd_tt: float) -> np.ndarray:
+    """ICRS -> true ecliptic and equinox of date: the true equator rotated by the true obliquity."""
+    d1, d2 = _MJD_ZERO, jd_tt - _MJD_ZERO
+    obliquity = erfa.obl06(d1, d2) + erfa.nut06a(d1, d2)[1]
+    c, s = math.cos(obliquity), math.sin(obliquity)
+    matrix: np.ndarray = np.array([[1.0, 0.0, 0.0], [0.0, c, s], [0.0, -s, c]]) @ to_true_equator(
+        jd_tt
+    )
+    return matrix
 
 
 def unit_vector(ra_deg: float, dec_deg: float) -> np.ndarray:

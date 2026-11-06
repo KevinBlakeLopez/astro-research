@@ -17,6 +17,10 @@ from dataclasses import dataclass
 from astro_research.civil_time import ResolvedInstant
 
 
+class InstantInLeapSecond(ValueError):
+    """The instant falls inside a leap second, which a UTC reading (a datetime) cannot express."""
+
+
 class TimeScale(enum.Enum):
     CLOCK_AS_UT1 = "clock_as_ut1"
     """The UTC clock reading is used as UT1, as most astrology software does."""

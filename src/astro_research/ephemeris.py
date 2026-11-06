@@ -23,14 +23,21 @@ import re
 import tomllib
 from collections.abc import Iterable
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import assert_never
 
 import swisseph as swe
 
 from astro_research.angles import ANGLE_CONVENTIONS, Angles, AnglesUndefined
-from astro_research.astronomical_time import AstronomicalTime, TimeScale
-from astro_research.civil_time import ResolvedInstant
+from astro_research.astronomical_time import AstronomicalTime, InstantInLeapSecond, TimeScale
+from astro_research.civil_time import ResolvedInstant, UtcTime, resolve
+from astro_research.eclipses import (
+    EclipseAttributes,
+    EclipseCandidate,
+    EclipseKind,
+    EclipseType,
+)
 from astro_research.geo import GeoPosition
 from astro_research.positions import (
     POSITION_CONVENTIONS,
@@ -65,6 +72,20 @@ _SE_POINT: dict[Point, int] = {
 # equatorial values only by float rounding (< 1e-6 mas, measured).
 _ECLIPTIC_FLAGS = swe.FLG_SWIEPH | swe.FLG_SPEED
 _EQUATORIAL_FLAGS = swe.FLG_SWIEPH | swe.FLG_EQUATORIAL | swe.FLG_SPEED
+_VECTOR_FLAGS = swe.FLG_SWIEPH | swe.FLG_EQUATORIAL | swe.FLG_XYZ  # apparent, geocentric, AU
+_NOWHERE = GeoPosition(latitude=0.0, longitude=0.0)  # a UTC input does not depend on the place
+_SOLAR_TYPE_FLAGS = {
+    swe.ECL_TOTAL: EclipseType.TOTAL,
+    swe.ECL_ANNULAR: EclipseType.ANNULAR,
+    swe.ECL_ANNULAR_TOTAL: EclipseType.HYBRID,
+    swe.ECL_PARTIAL: EclipseType.PARTIAL,
+}
+_LUNAR_TYPE_FLAGS = {
+    swe.ECL_TOTAL: EclipseType.TOTAL,
+    swe.ECL_PARTIAL: EclipseType.PARTIAL,
+    swe.ECL_PENUMBRAL: EclipseType.PENUMBRAL,
+}
+_NO_SAROS = -99999999  # Swiss Ephemeris's value when it has no saros number
 
 
 class EphemerisEnvironmentError(RuntimeError):
@@ -332,6 +353,101 @@ class Ephemeris:
             beyond_polar_circle=abs(place.latitude) > 90 - true_obliquity,
         )
 
+    def time_from_tt(self, jd_tt: float, time_scale: TimeScale) -> AstronomicalTime:
+        """The instant `jd_tt` (TT) as the AstronomicalTime of its UTC reading under `time_scale`.
+
+        UT1 is TT minus Swiss Ephemeris's delta-T, as in `time()`. Under CLOCK_AS_UT1 the UTC
+        reading is UT1 itself, so it never falls in a leap second; under UT1_FROM_DELTA_T an
+        instant inside a leap second has no reading and is refused. The reading is rounded to the
+        microsecond, so the result's jd_tt differs from `jd_tt` by up to 0.5 us plus Julian-date
+        rounding (about 40 us).
+        """
+        self._require_active()
+        jd_ut1 = _ut1_from_tt(jd_tt)
+        match time_scale:
+            case TimeScale.CLOCK_AS_UT1:
+                year, month, day, hours = swe.revjul(jd_ut1, swe.GREG_CAL)
+                reading = datetime(year, month, day, tzinfo=UTC) + timedelta(hours=hours)
+            case TimeScale.UT1_FROM_DELTA_T:
+                year, month, day, hour, minute, seconds = swe.jdut1_to_utc(jd_ut1, swe.GREG_CAL)
+                if seconds >= 60:
+                    raise InstantInLeapSecond(
+                        f"JD {jd_tt} TT falls in the leap second {year}-{month:02d}-{day:02d} "
+                        f"{hour:02d}:{minute:02d}:{seconds:.6f} UTC"
+                    )
+                start = datetime(year, month, day, hour, minute, tzinfo=UTC)
+                reading = start + timedelta(seconds=seconds)
+            case _:
+                assert_never(time_scale)
+        return self.time(resolve(UtcTime(utc=reading), _NOWHERE), time_scale)
+
+    def eclipse_search(
+        self, kind: EclipseKind, start_jd_ut1: float, *, backward: bool
+    ) -> EclipseCandidate:
+        """Swiss Ephemeris's next eclipse of `kind` after (or before) `start_jd_ut1`, any type.
+
+        Swiss Ephemeris falls back to its Moshier model outside the data files without saying so
+        (observed), so callers must check the eclipse's instant against the files.
+        """
+        self._require_active()
+        if kind is EclipseKind.SOLAR:
+            flags, tret = swe.sol_eclipse_when_glob(start_jd_ut1, swe.FLG_SWIEPH, 0, backward)
+            central: bool | None = _one_flag(
+                flags, {swe.ECL_CENTRAL: True, swe.ECL_NONCENTRAL: False}
+            )
+            eclipse_type = _one_flag(flags, _SOLAR_TYPE_FLAGS)
+        else:
+            flags, tret = swe.lun_eclipse_when(start_jd_ut1, swe.FLG_SWIEPH, 0, backward)
+            central = None
+            eclipse_type = _one_flag(flags, _LUNAR_TYPE_FLAGS)
+        estimate_ut1 = tret[0]
+        return EclipseCandidate(
+            kind=kind,
+            type=eclipse_type,
+            central=central,
+            estimate_jd_ut1=estimate_ut1,
+            estimate_jd_tt=estimate_ut1 + _delta_t_days(estimate_ut1),
+        )
+
+    def eclipse_attributes(self, kind: EclipseKind, jd_tt: float) -> EclipseAttributes:
+        """Magnitudes, saros and (solar) the place of greatest eclipse, at `jd_tt`."""
+        self._require_active()
+        jd_ut1 = _ut1_from_tt(jd_tt)
+        if kind is EclipseKind.SOLAR:
+            _, where, attr = swe.sol_eclipse_where(jd_ut1, swe.FLG_SWIEPH)
+            return EclipseAttributes(
+                magnitude=attr[8],  # NASA's definition, per the Swiss Ephemeris manual
+                penumbral_magnitude=None,
+                saros_series=_saros(attr[9]),
+                saros_member=_saros(attr[10]),
+                place_of_greatest=GeoPosition(latitude=where[1], longitude=where[0]),
+            )
+        _, attr = swe.lun_eclipse_how(jd_ut1, (0.0, 0.0, 0.0), swe.FLG_SWIEPH)
+        return EclipseAttributes(
+            magnitude=attr[0],  # umbral
+            penumbral_magnitude=attr[1],
+            saros_series=_saros(attr[9]),
+            saros_member=_saros(attr[10]),
+            place_of_greatest=None,
+        )
+
+    def apparent_vectors(
+        self, jd_tt: float
+    ) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
+        """Geocentric apparent equatorial positions of the Sun and Moon, in AU; refused outside
+        the data files."""
+        self._require_active()
+        sun = _calc(jd_tt, Body.SUN, _VECTOR_FLAGS)
+        moon = _calc(jd_tt, Body.MOON, _VECTOR_FLAGS)
+        return (sun[0], sun[1], sun[2]), (moon[0], moon[1], moon[2])
+
+    def apparent_longitudes(self, jd_tt: float) -> tuple[float, float, float, float]:
+        """Apparent ecliptic longitudes and speeds: (Sun, its speed, Moon, its speed)."""
+        self._require_active()
+        sun = _calc(jd_tt, Body.SUN, _ECLIPTIC_FLAGS)
+        moon = _calc(jd_tt, Body.MOON, _ECLIPTIC_FLAGS)
+        return sun[0], sun[3], moon[0], moon[3]
+
     def _require_active(self) -> None:
         if _active_folder != self._folder:
             raise StaleEphemeris(
@@ -349,3 +465,31 @@ def _calc(jd_tt: float, body: Point, flags: int) -> tuple[float, ...]:
     if serr:
         raise EphemerisNotLoaded(f"{body.value} at JD {jd_tt} TT: {serr.strip()}")
     return tuple(position)
+
+
+def _delta_t_days(jd_ut1: float) -> float:
+    delta_t: float
+    delta_t, serr = swe.deltat_ex(jd_ut1, swe.FLG_SWIEPH)
+    if serr:
+        raise EphemerisNotLoaded(f"delta-T: {serr.strip()}")
+    return delta_t
+
+
+def _ut1_from_tt(jd_tt: float) -> float:
+    """UT1 such that UT1 + delta-T(UT1) = TT; delta-T changes slowly, so three steps converge."""
+    jd_ut1 = jd_tt
+    for _ in range(3):
+        jd_ut1 = jd_tt - _delta_t_days(jd_ut1)
+    return jd_ut1
+
+
+def _one_flag[T](flags: int, table: dict[int, T]) -> T:
+    """The one entry of `table` whose bit is set in `flags`; anything else is unexpected."""
+    found = [value for bit, value in table.items() if flags & bit]
+    if len(found) != 1:
+        raise EphemerisNotLoaded(f"unexpected eclipse flags {flags:#x}")
+    return found[0]
+
+
+def _saros(value: float) -> int | None:
+    return None if value == _NO_SAROS else int(value)

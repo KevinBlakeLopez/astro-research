@@ -25,6 +25,11 @@ if TYPE_CHECKING:  # type-only imports keep this module free of the adapter at r
     from astro_research.ephemeris import EphemerisProvenance
     from astro_research.geo import GeoPosition
 
+# Swiss Ephemeris's sidereal-time model switches (SIDT_LTERM_T0 and _T1 in swephlib.c, 2.10.03):
+# the long-term model at jd_ut1 <= 2396758.5 (1850-01-01) and jd_ut1 >= 2469807.5 (2050-01-01),
+# IERS 2010 strictly between. Observed at those instants: the boundary itself is long-term.
+SIDEREAL_TIME_SWITCHES_JD_UT1 = (2396758.5, 2469807.5)
+
 ANGLE_CONVENTIONS = (
     "angles-v1: tropical, true ecliptic of date, from UT1; Swiss Ephemeris sidereal time (IERS "
     "2010 for 1850-01-01..2050-01-01, its long-term model outside); Ascendant always the eastern "

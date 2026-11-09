@@ -2,7 +2,7 @@
 
 `research-platform/` stores subjects, sources, birth records and datasets in PostgreSQL, and runs the engine over datasets. It's a Django project and a separate distribution, `research-platform`, which depends on the engine. The engine doesn't depend on it: no `astro_research` module imports Django, psycopg or the platform, and the engine's distribution depends on neither (`tests/test_boundary.py`).
 
-Django owns the schema (`research_platform/models.py` and its migrations). The web interface, described below, is the admin for entering data, a chart page and a birth-time sensitivity page for each record, and a comparison of any two records.
+Django owns the schema (`research_platform/models.py` and its migrations). The web interface, described below, is the admin for entering data; a chart page, a birth-time sensitivity page and a nearest-eclipses page for each record; and a comparison of any two records.
 
 ## What is stored
 
@@ -86,6 +86,19 @@ It runs on this machine only: it answers on 127.0.0.1 and localhost, and every p
     - Size: 26,418 rows and 2.1 MiB for ±10 minutes every minute with the major aspect angles (measured).
 
   The chart page and the record's admin page link to it.
+- **Nearest eclipses** (`/records/<id>/eclipses/`): the solar and lunar eclipse before and after the birth, from the engine's `previous_eclipse` and `next_eclipse`.
+  - **The types** are named in the address, `solar` and `lunar`, each a comma-separated list or `all`, and are never defaulted. A kind is shown only when its types are named.
+  - **Each eclipse shows:**
+    - its type;
+    - greatest eclipse (NASA's definition) and the syzygy in UTC, and the TT days from the birth;
+    - its degree and declination: by the project's convention, taken at the syzygy, the Sun's for a solar eclipse and the Moon's for a lunar one;
+    - its magnitudes and saros series and member;
+    - for a solar eclipse, whether it's central and the place of greatest eclipse;
+    - the Sun and Moon at both instants.
+  - **Refusals:** an eclipse the engine refuses shows its refusal in its own place, and the others still show. For a birth up to about six months before IERS's last day (2026-10-10), the next eclipses are refused but the ones before still show.
+  - **Not yet:** separations of an eclipse's degree from the birth chart's points. That's a new engine measurement, to be added there first.
+
+  The chart page and the record's admin page link to it.
 - **Comparing two records** (`/records/<a>/compare/<b>/`): twins, or two sources' records of one subject. Choose two records in the admin's record list and run **Compare the two selected records**; the older record is A, and the page can swap them.
   - **Both charts use the settings in the address,** as the engine's `compare()` requires, and every number is B minus A.
   - **It shows** both UTC readings, the civil and elapsed seconds between them, and the ARMC change. Then each point's longitude in A and B, with its changes. Then each pair's separation in A and B, its change, and A's and B's deviation from each named aspect angle.
@@ -139,6 +152,9 @@ cd research-platform && RESEARCH_DEBUG=1 uv run python manage.py runserver 127.0
 18. Follow **Download every row as CSV**. Expect a file named `<calculation key>-span600-step60.csv` of about 2 MB that opens in a spreadsheet or pandas.
 19. Enter a span of `7200` and a step of `50` and press **Sweep**. Expect the sensitivity page again, with `7200` and `50` still in the form and "a sweep is at most 241 offsets" above it.
 20. On the first record's chart page with aspect angles named, open Firefox's console and run `htmx.ajax('GET', location.pathname + 'pairs/?aspects=major&point=chiron', '#pairs')`. Expect the pairs table replaced by "That can't be shown: point 'chiron' is not one of this chart's points". HTMX would leave the table as it was without the base page's setting.
+21. From the first record's chart page, follow **Nearest eclipses**. Expect a request for eclipse types and no eclipses.
+22. Enter `all` for both kinds and press **Show**. Expect four sections: the hybrid solar eclipse of 1987-03-29 and the annular one of 1987-09-23, and the penumbral lunar eclipses of 1987-04-14 and 1987-10-07. Each shows its degree at the syzygy.
+23. Enter `ring` as the solar types and press **Show**. Expect the reason above the form, with `ring` still in it.
 
 ## Tests
 

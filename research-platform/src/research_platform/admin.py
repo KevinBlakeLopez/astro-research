@@ -42,7 +42,7 @@ class RecordAdmin(admin.ModelAdmin[Record]):
     list_display = ("subject", "reading", "time_kind", "zone", "source")
     list_filter = ("time_kind", "time_resolution")
     search_fields = ("subject__label", "reading", "zone")
-    readonly_fields = ("chart", "sensitivity")
+    readonly_fields = ("chart", "sensitivity", "eclipses")
     actions = ("compare_records",)
 
     @admin.display(description="Chart")
@@ -57,6 +57,13 @@ class RecordAdmin(admin.ModelAdmin[Record]):
             return "Save the record to sweep its birth time."
         url = reverse("record-sensitivity", args=[record.pk])
         return format_html('<a href="{}">Birth-time sensitivity</a>', url)
+
+    @admin.display(description="Nearest eclipses")
+    def eclipses(self, record: Record) -> SafeString | str:
+        if record.pk is None:
+            return "Save the record to find its eclipses."
+        url = reverse("record-eclipses", args=[record.pk])
+        return format_html('<a href="{}">Nearest eclipses</a>', url)
 
     @admin.action(description="Compare the two selected records")
     def compare_records(

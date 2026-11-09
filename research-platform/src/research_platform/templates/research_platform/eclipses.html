@@ -1,0 +1,61 @@
+{% extends "research_platform/base.html" %}
+{% load measurements %}
+{% block title %}Eclipses: {{ record.subject }}{% endblock %}
+{% block content %}
+<h1>Nearest eclipses: {{ record.subject }}, {{ record.reading }}{% if record.zone %} {{ record.zone }}{% endif %}</h1>
+<p><a href="{% url 'record-chart' record.pk %}?{{ query }}">The chart</a> · <a href="{% url 'admin:research_platform_record_change' record.pk %}">Edit the record</a></p>
+
+{% if error %}{% include "research_platform/request_error.html" %}{% endif %}
+<form class="settings" method="get">
+  <label>Solar types <input name="solar" value="{{ solar }}" placeholder="all, or e.g. total,annular"></label>
+  <label>Lunar types <input name="lunar" value="{{ lunar }}" placeholder="all, or e.g. total,partial"></label>
+  <label>Time scale
+    <select name="time_scale">
+      {% for name in time_scales %}<option value="{{ name }}"{% if name == time_scale %} selected{% endif %}>{{ name }}</option>{% endfor %}
+    </select>
+  </label>
+  <button type="submit">Show</button>
+</form>
+<p>Solar types: {{ solar_types|join:", " }}. Lunar types: {{ lunar_types|join:", " }}. A kind is shown only when its types are named.
+  An eclipse's degree is taken at the syzygy: the Sun's for a solar eclipse, the Moon's for a lunar one. Greatest eclipse is NASA's definition.</p>
+
+{% if error %}
+{% elif not chosen %}
+<p>Name the solar and/or lunar eclipse types to find: no types are chosen for you.</p>
+{% elif refusal %}
+{% include "research_platform/refusal.html" %}
+{% else %}
+{% for result in results %}
+<section data-eclipse="{{ result.name }}">
+  <h2>{{ result.title }}</h2>
+  {% if result.refusal %}
+  {% include "research_platform/refusal.html" with refusal=result.refusal %}
+  {% else %}
+  {% with eclipse=result.eclipse %}
+  <table>
+    <tr><th class="name">Type</th><td class="name">{{ eclipse.type.value }}{% if eclipse.central is not None %}, {{ eclipse.central|yesno:"central,not central" }}{% endif %}</td></tr>
+    <tr><th class="name">Greatest eclipse, UTC</th><td class="name">{{ eclipse.greatest.time.instant.utc.isoformat }}</td></tr>
+    <tr><th class="name">Syzygy, UTC</th><td class="name">{{ eclipse.syzygy.time.instant.utc.isoformat }}</td></tr>
+    <tr><th class="name">Days from birth (greatest eclipse, TT)</th><td>{{ result.days|fixed }}</td></tr>
+    <tr><th class="name">Degree at the syzygy (°)</th><td data-degree="longitude">{{ result.degree.longitude|fixed }}</td></tr>
+    <tr><th class="name">Declination at the syzygy (°)</th><td data-degree="declination">{{ result.degree.declination|fixed }}</td></tr>
+    <tr><th class="name">Magnitude{% if eclipse.penumbral_magnitude is not None %} (umbral){% endif %}</th><td>{{ eclipse.magnitude|fixed }}</td></tr>
+    {% if eclipse.penumbral_magnitude is not None %}<tr><th class="name">Penumbral magnitude</th><td>{{ eclipse.penumbral_magnitude|fixed }}</td></tr>{% endif %}
+    <tr><th class="name">Saros series, member</th><td>{{ eclipse.saros_series }}, {{ eclipse.saros_member }}</td></tr>
+    {% if eclipse.place_of_greatest %}<tr><th class="name">Place of greatest eclipse (latitude, longitude)</th><td>{{ eclipse.place_of_greatest.latitude|fixed:4 }}, {{ eclipse.place_of_greatest.longitude|fixed:4 }}</td></tr>{% endif %}
+  </table>
+  <div class="scroll"><table>
+    <thead><tr><th class="name">Instant</th><th class="name">Body</th><th>Longitude</th><th>Latitude</th><th>Declination</th></tr></thead>
+    <tbody>
+      <tr><td class="name">Greatest eclipse</td><td class="name">sun</td><td>{{ eclipse.greatest.sun.longitude|fixed }}</td><td>{{ eclipse.greatest.sun.latitude|fixed }}</td><td>{{ eclipse.greatest.sun.declination|fixed }}</td></tr>
+      <tr><td class="name">Greatest eclipse</td><td class="name">moon</td><td>{{ eclipse.greatest.moon.longitude|fixed }}</td><td>{{ eclipse.greatest.moon.latitude|fixed }}</td><td>{{ eclipse.greatest.moon.declination|fixed }}</td></tr>
+      <tr><td class="name">Syzygy</td><td class="name">sun</td><td>{{ eclipse.syzygy.sun.longitude|fixed }}</td><td>{{ eclipse.syzygy.sun.latitude|fixed }}</td><td>{{ eclipse.syzygy.sun.declination|fixed }}</td></tr>
+      <tr><td class="name">Syzygy</td><td class="name">moon</td><td>{{ eclipse.syzygy.moon.longitude|fixed }}</td><td>{{ eclipse.syzygy.moon.latitude|fixed }}</td><td>{{ eclipse.syzygy.moon.declination|fixed }}</td></tr>
+    </tbody>
+  </table></div>
+  {% endwith %}
+  {% endif %}
+</section>
+{% endfor %}
+{% endif %}
+{% endblock %}

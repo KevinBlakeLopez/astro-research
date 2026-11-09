@@ -36,7 +36,11 @@ Outcomes, hypotheses, analysis runs and derived configurations belong to the res
 
 **Any other error stops the run:** an environment error, such as a stale handle or wrong files, or a bug. Every outcome and chart of the run is rolled back, the run is marked failed with the error's class and message, and the error is raised again.
 
-**One process is enough at the brief's scale.** For 200 records, a fresh process took 0.74 s in all (measured): 55 ms for imports, 24 ms to open the engine, 129 ms for the charts and 416 ms for their documents. The engine is stateless per call, so a process pool can be added to the runner later without changing it. One transaction per run suits runs of this size; larger runs would commit in chunks. Two runs storing the same chart at the same moment aren't handled: runs are started one at a time.
+`run_dataset` does all three steps. The dataset's page calls `start_run` and then `finish_run`, so it still has the run when the error is raised, and can open it.
+
+**One process is enough at the brief's scale.** For 200 records, a fresh process took 0.74 s in all (measured): 55 ms for imports, 24 ms to open the engine, 129 ms for the charts and 416 ms for their documents. The engine is stateless per call, so a process pool can be added to the runner later without changing it. One transaction per run suits runs of this size; larger runs would commit in chunks.
+
+**Two runs at once aren't handled.** That could be two browser tabs, or the page and the command. Reading the code, the second run to store the same chart would fail on the duplicate calculation key and be marked failed, with the error on its page; this hasn't been tried. Start runs one at a time.
 
 ## Running it
 
@@ -64,7 +68,7 @@ The command prints a summary such as `run 3: 180 charts (12 computed, 168 reused
 
 It runs on this machine only: it answers on 127.0.0.1 and localhost, and every page needs a login.
 
-- **The admin** (`/admin/`) is where subjects, sources, records and datasets are entered. Saving a record asks the engine to build it, so the engine's reason for refusing one shows on the form. Runs, outcomes and stored charts can be looked at but not added, changed or deleted. A record's admin page links to its chart.
+- **The admin** (`/admin/`) is where subjects, sources, records and datasets are entered. Saving a record asks the engine to build it, so the engine's reason for refusing one shows on the form. Runs, outcomes and stored charts can be looked at but not added, changed or deleted. A record's admin page links to its chart, and a dataset's to its page.
 - **A record's chart** (`/records/<id>/chart/`) is computed on request, under the settings in its address: `aspects` (degrees and/or `major`, `octile`) and `time_scale` (default `ut1-from-iers`). So an address reproduces exactly what the page shows. It shows:
   - the resolved time and where UT1 came from;
   - positions, angles and every pair, to six decimals (about 4 mas), formatted as Python formats them;
@@ -118,6 +122,21 @@ It runs on this machine only: it answers on 127.0.0.1 and localhost, and every p
   - **Changes are continuous numbers.** No orb is applied, so nothing says a contact appeared or disappeared.
   - **The pairs** can be narrowed to those involving an angle (the Ascendant, MC and Vertex, which turn together) or one point. They can be sorted by the size of their change, or by the closer of A's and B's deviations from one aspect angle, which finds contacts that are near-exact in either chart.
   - **Each record's chart and JSON document** are a link away, with the same settings. If the engine refuses either record, the page shows that record's refusal instead of a comparison.
+- **Datasets** (`/datasets/`, linked from every page's header) lists each dataset by name, with its number of records and its latest run.
+- **A dataset** (`/datasets/<id>/`) shows its description, its runs newest first (status, settings, counts, start and duration), and its records (subject, reading, zone, source, and a link to the record's chart).
+  - **Starting a run:** the page's form names the aspect angles and time scale, as the chart page's does, and is a POST with Django's CSRF check. The run is `run_dataset`'s, in the request, and its page opens when it's done, finished or failed. A failed run's traceback goes to the server's log.
+  - **Up to 500 records.** 500 records took 4.1–4.3 s when every chart was computed, and 0.6 s run again (measured). A larger dataset is refused with the `compute_dataset` command to run it with.
+- **A run** (`/runs/<id>/`) shows what it ran with:
+  - its status and any error;
+  - its settings, as the form takes them;
+  - the engine version and the ephemeris provenance (binding, Swiss Ephemeris version, DE number, source commit, each file's SHA-256 and the UT1 table's);
+  - its counts, and when it started and finished.
+
+  Then each record's outcome: a link to its stored chart, or the engine's refusal (class and message). The outcomes can be narrowed to charts only or refusals only (`show=charts`, `show=refusals`). A run is never changed or deleted here: it's the record of what was computed.
+- **A run's downloads:**
+  - **Outcomes as CSV** (`run-<id>-outcomes.csv`): one row per record, in record order. The columns are `record_id`, `subject`, `reading`, `outcome` (`chart` or `refusal`), `calculation_key`, `refusal_class` and `refusal_message`. Line endings are `\r\n`, as RFC 4180 has them.
+  - **Charts as JSON Lines** (`run-<id>-charts.jsonl`): each stored chart once, in the order of its first record, exactly as stored, so each line reads back with `chart_from_json`. Records with the same inputs, say two sources that agree, share a chart, and the CSV shows which records point to it. The file is streamed: 500 charts came to 56.5 MiB in 0.18 s (measured).
+- **A stored chart** (`/charts/<calculation key>/`) reads the stored document back and shows it with the chart page's tables and every pair. There's no settings form, since a stored chart's settings are fixed. It shows the engine version that computed it, from the document's inputs, and says so if that isn't the running one. A document this engine can't read shows why, with a 422.
 - **Refusals.** Settings, offsets or a filter a page can't use are refused with a 400, and the reason is shown where it happened, with debug mode on or off:
   - **on a page:** above its forms, which keep what was submitted, with no results;
   - **in a fragment:** in place of the table;
@@ -173,6 +192,14 @@ cd research-platform && RESEARCH_DEBUG=1 uv run python manage.py runserver 127.0
 27. Under **Gaps**, choose **star-body** as the kind. Expect only gaps between Regulus and a body, without the page reloading.
 28. Follow **Download every gap as CSV**. Expect `parans-record-<id>.csv`.
 29. Enter `zePscB` as a star and press **Show**. Expect "'zePscB' is not in the star catalogue" above the form.
+30. In the admin, add a dataset named `sample` with the records from steps 1, 7 and 9, and save it. Follow **Its runs, and starting one**. Expect the three records, "None yet." under the runs, and the run form.
+31. Enter `major` as the aspect angles and press **Run**. Expect the run's page within a second or so: finished, `0, 60, 90, 120, 180`, `ut1-from-iers`, "2 computed · 0 reused · 1 refused", and the ephemeris files' hashes.
+32. Follow **refusals only**. Expect just step 7's record, with `AmbiguousLocalTime` and the engine's message.
+33. Follow **every outcome**, then a chart's link. Expect the stored chart's page: the time, positions, angles and pairs tables, the engine version, and no settings form.
+34. Back on the run's page, follow both downloads. Expect `run-<id>-outcomes.csv`, which opens in a spreadsheet as three rows, and `run-<id>-charts.jsonl`, two lines of about 230 KiB in all.
+35. Follow the dataset's name in the heading, and run it again with `major`. Expect "0 computed · 2 reused · 1 refused", and on the dataset's page the new run listed first.
+36. On the dataset's page, enter `banana` as the aspect angles and press **Run**. Expect "That can't be run: aspects: 'banana' is neither an angle nor a set name" above the form, with `banana` still in it, and no new run.
+37. On the dataset's page, open Firefox's console and run `fetch(document.querySelector('form.settings').action, {method: 'POST', body: new URLSearchParams({aspects: 'major'})}).then(r => r.status)`. Expect `403`, since the request has no CSRF token, and no new run after reloading.
 
 ## Tests
 

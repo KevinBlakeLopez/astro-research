@@ -1,11 +1,17 @@
-"""The platform's pages: the admin, logging in and out, a record's chart, its sensitivity
-and eclipses, and comparisons."""
+"""The platform's pages: the admin, logging in and out, a record's chart, its sensitivity,
+eclipses and parans, comparisons, and datasets with their runs and stored charts."""
 
 from django.contrib import admin
 from django.contrib.auth import views as auth_views
 from django.urls import path
 
-from research_platform import eclipses_views, parans_views, sensitivity_views, views
+from research_platform import (
+    eclipses_views,
+    parans_views,
+    runs_views,
+    sensitivity_views,
+    views,
+)
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -56,4 +62,11 @@ urlpatterns = [
         sensitivity_views.record_sensitivity_csv,
         name="record-sensitivity-csv",
     ),
+    path("datasets/", runs_views.datasets, name="datasets"),
+    path("datasets/<int:pk>/", runs_views.dataset, name="dataset"),
+    path("datasets/<int:pk>/run/", runs_views.dataset_run, name="dataset-run"),
+    path("runs/<int:pk>/", runs_views.run, name="run"),
+    path("runs/<int:pk>/outcomes.csv", runs_views.run_outcomes_csv, name="run-outcomes-csv"),
+    path("runs/<int:pk>/charts.jsonl", runs_views.run_charts_jsonl, name="run-charts-jsonl"),
+    path("charts/<str:key>/", runs_views.stored_chart, name="stored-chart"),
 ]

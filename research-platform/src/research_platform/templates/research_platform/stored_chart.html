@@ -1,0 +1,25 @@
+{% extends "research_platform/base.html" %}
+{% block title %}Stored chart {{ stored.calculation_key|truncatechars:13 }}{% endblock %}
+{% block content %}
+<h1>Stored chart</h1>
+<p>Calculation key <code>{{ stored.calculation_key }}</code>, stored {{ stored.stored_at|date:"Y-m-d H:i:s T" }}</p>
+{% if refusal %}
+<div class="refusal">
+  <p><strong>This engine can't read the stored document: <code>{{ refusal.name }}</code></strong></p>
+  <p>{{ refusal.message }}</p>
+</div>
+{% else %}
+<table>
+  <tr><th class="name">Computed by engine</th><td class="name">{{ engine_version }}{% if engine_version != running_version %} (the running engine is {{ running_version }}){% endif %}</td></tr>
+  <tr><th class="name">Aspect angles</th><td class="name">{{ aspects|default:"none" }}</td></tr>
+  <tr><th class="name">Time scale</th><td class="name">{{ time_scale }}</td></tr>
+  <tr><th class="name">Place (degrees)</th><td class="name">latitude {{ chart.record.place.latitude }}, longitude {{ chart.record.place.longitude }}</td></tr>
+</table>
+<p>This is the chart as the run stored it, so its settings can't be changed here. Values are shown to 6 places; the run's JSON Lines download has them at full precision.</p>
+
+{% include "research_platform/chart_tables.html" %}
+
+<h2>Pairs (degrees)</h2>
+<div class="scroll">{% include "research_platform/pairs.html" %}</div>
+{% endif %}
+{% endblock %}

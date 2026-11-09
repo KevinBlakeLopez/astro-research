@@ -1,0 +1,53 @@
+{% extends "research_platform/base.html" %}
+{% block title %}Run {{ run.pk }}{% endblock %}
+{% block content %}
+<h1>Run {{ run.pk }} of <a href="{% url 'dataset' run.dataset.pk %}">{{ run.dataset.name }}</a></h1>
+{% if run.status == "failed" %}
+<div class="refusal">
+  <p><strong>The run failed: <code>{{ run.error_class }}</code></strong></p>
+  <p>{{ run.error_message }}</p>
+  <p>None of its outcomes or charts were kept.</p>
+</div>
+{% elif run.status == "running" %}
+<p>This run hasn't finished. A run started from the dataset's page finishes before its page opens, so this one is either still running under <code>compute_dataset</code> or was stopped.</p>
+{% endif %}
+
+<h2>What it ran with</h2>
+<table>
+  <tr><th class="name">Status</th><td class="name">{{ run.status }}</td></tr>
+  <tr><th class="name">Aspect angles</th><td class="name">{{ described.aspects|default:"none" }}</td></tr>
+  <tr><th class="name">Time scale</th><td class="name">{{ described.time_scale }}</td></tr>
+  <tr><th class="name">Points</th><td class="name">{{ points }}</td></tr>
+  <tr><th class="name">Engine version</th><td class="name">{{ run.engine_version }}</td></tr>
+  <tr><th class="name">Binding</th><td class="name">{{ provenance.binding }} (Swiss Ephemeris {{ provenance.swisseph_version }})</td></tr>
+  <tr><th class="name">Ephemeris</th><td class="name">DE{{ provenance.de_number }}, source commit <code>{{ provenance.source_commit }}</code></td></tr>
+  {% for name, sha256 in provenance.file_sha256 %}<tr><th class="name"><code>{{ name }}</code> SHA-256</th><td class="name"><code>{{ sha256 }}</code></td></tr>
+  {% endfor %}<tr><th class="name">UT1 table SHA-256</th><td class="name"><code>{{ provenance.ut1_data_sha256 }}</code></td></tr>
+  <tr><th class="name">Started</th><td class="name">{{ run.started_at|date:"Y-m-d H:i:s T" }}</td></tr>
+  <tr><th class="name">Finished</th><td class="name">{% if run.finished_at %}{{ run.finished_at|date:"Y-m-d H:i:s T" }}, after {{ described.duration.total_seconds|floatformat:2 }} s{% else %}not yet{% endif %}</td></tr>
+  <tr><th class="name">Outcomes</th><td class="name">{{ run.computed }} computed · {{ run.reused }} reused · {{ run.refused }} refused</td></tr>
+</table>
+
+<h2>Outcomes</h2>
+<p>Download <a href="{% url 'run-outcomes-csv' run.pk %}">the outcomes (CSV)</a> or <a href="{% url 'run-charts-jsonl' run.pk %}">the charts (JSON Lines)</a>: each stored chart once, exactly as stored, every value at full precision.</p>
+<p>Show: {% for name, label in shows.items %}{% if name == show %}<strong>{{ label }}</strong>{% else %}<a href="{% url 'run' run.pk %}{% if name %}?show={{ name }}{% endif %}">{{ label }}</a>{% endif %}{% if not forloop.last %} · {% endif %}{% endfor %}</p>
+{% if error %}
+{% include "research_platform/request_error.html" %}
+{% else %}
+<div class="scroll"><table>
+  <thead><tr><th class="name">Record</th><th class="name">Subject</th><th class="name">Reading</th><th class="name">Outcome</th></tr></thead>
+  <tbody>
+  {% for outcome in outcomes %}
+  <tr data-outcome="{{ outcome.record.pk }}" data-kind="{% if outcome.chart_id %}chart{% else %}refusal{% endif %}">
+    <td class="name"><a href="{% url 'admin:research_platform_record_change' outcome.record.pk %}">{{ outcome.record.pk }}</a></td>
+    <td class="name">{{ outcome.record.subject.label }}</td>
+    <td class="name">{{ outcome.record.reading }}</td>
+    <td class="name">{% if outcome.chart_id %}<a href="{% url 'stored-chart' outcome.chart_id %}">Chart <code>{{ outcome.chart_id|truncatechars:13 }}</code></a>{% else %}Refused: <code>{{ outcome.refusal_class }}</code>: {{ outcome.refusal_message }}{% endif %}</td>
+  </tr>
+  {% empty %}
+  <tr><td class="name" colspan="4">None.</td></tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% endif %}
+{% endblock %}

@@ -28,39 +28,7 @@
 <p>Calculation key <code>{{ chart.calculation_key }}</code> ·
   <a href="{% url 'record-chart-json' record.pk %}?{{ request.GET.urlencode }}">Download the JSON document</a> (every value at full precision)</p>
 
-<h2>Time</h2>
-<table>
-  <tr><th class="name">UTC</th><td class="name">{{ chart.time.instant.utc.isoformat }}</td></tr>
-  <tr><th class="name">Offset source</th><td class="name">{{ chart.time.instant.offset_source.value }}{% if chart.time.instant.zone_abbreviation %} ({{ chart.time.instant.zone_abbreviation }}, tzdata {{ chart.time.instant.tzdata_version }}){% endif %}</td></tr>
-  <tr><th class="name">Time scale</th><td class="name">{{ chart.time.time_scale.value }}</td></tr>
-  <tr><th class="name">UT1 from</th><td class="name">{{ chart.time.ut1_basis.value }}</td></tr>
-  <tr><th class="name">UT1 − UTC (s)</th><td>{{ chart.time.ut1_minus_utc_s|fixed }}</td></tr>
-  <tr><th class="name">ΔT (s)</th><td>{{ chart.time.delta_t_s|fixed }}</td></tr>
-  <tr><th class="name">JD UT1</th><td>{{ chart.time.jd_ut1|fixed:8 }}</td></tr>
-  <tr><th class="name">JD TT</th><td>{{ chart.time.jd_tt|fixed:8 }}</td></tr>
-</table>
-
-<h2>Positions (degrees; speeds per day)</h2>
-<div class="scroll"><table>
-  <thead><tr><th class="name">Point</th><th>Longitude</th><th>Latitude</th><th>Speed</th><th>Right ascension</th><th>Declination</th><th>Distance (AU)</th></tr></thead>
-  <tbody>
-  {% for body in chart.positions.bodies %}
-  <tr><td class="name">{{ body.body.value }}</td><td>{{ body.longitude|fixed }}</td><td>{{ body.latitude|fixed }}</td><td>{{ body.longitude_speed|fixed }}</td><td>{{ body.right_ascension|fixed }}</td><td>{{ body.declination|fixed }}</td><td>{{ body.distance_au|fixed }}</td></tr>
-  {% endfor %}
-  </tbody>
-</table></div>
-
-<h2>Angles (degrees)</h2>
-<table>
-  <tr><th class="name">ARMC</th><td>{{ chart.angles.armc|fixed }}</td></tr>
-  <tr><th class="name">Ascendant</th><td>{{ chart.angles.ascendant|fixed }}</td></tr>
-  <tr><th class="name">Midheaven</th><td>{{ chart.angles.midheaven|fixed }}</td></tr>
-  <tr><th class="name">Descendant</th><td>{{ chart.angles.descendant|fixed }}</td></tr>
-  <tr><th class="name">IC</th><td>{{ chart.angles.imum_coeli|fixed }}</td></tr>
-  <tr><th class="name">Vertex</th><td>{{ chart.angles.vertex|fixed }}</td></tr>
-  <tr><th class="name">True obliquity</th><td>{{ chart.angles.true_obliquity|fixed }}</td></tr>
-  <tr><th class="name">Beyond the polar circle</th><td>{{ chart.angles.beyond_polar_circle|yesno:"yes,no" }}</td></tr>
-</table>
+{% include "research_platform/chart_tables.html" %}
 
 <h2>Pairs (degrees)</h2>
 <form class="filter" hx-get="{% url 'record-chart-pairs' record.pk %}" hx-target="#pairs" hx-trigger="change">

@@ -2,7 +2,8 @@
 
 Runs, outcomes and stored charts are what the engine produced, so they can be looked at but not
 added, changed or deleted here. A record is validated by the engine when it's saved (`Record.
-clean()`), and its page links to its chart. Two records chosen in the list open their comparison.
+clean()`), and its page links to its chart. Two records chosen in the list open their
+comparison. A dataset's page links to its runs, where a run can be started.
 """
 
 from typing import Any
@@ -89,6 +90,14 @@ class RecordAdmin(admin.ModelAdmin[Record]):
 class DatasetAdmin(admin.ModelAdmin[Dataset]):
     list_display = ("name",)
     filter_horizontal = ("records",)
+    readonly_fields = ("runs",)
+
+    @admin.display(description="Runs")
+    def runs(self, dataset: Dataset) -> SafeString | str:
+        if dataset.pk is None:
+            return "Save the dataset to run it."
+        url = reverse("dataset", args=[dataset.pk])
+        return format_html('<a href="{}">Its runs, and starting one</a>', url)
 
 
 class ProducedByTheEngine[M: Any](admin.ModelAdmin[M]):

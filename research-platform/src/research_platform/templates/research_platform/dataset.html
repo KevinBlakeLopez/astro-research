@@ -1,0 +1,64 @@
+{% extends "research_platform/base.html" %}
+{% block title %}Dataset: {{ dataset.name }}{% endblock %}
+{% block content %}
+<h1>{{ dataset.name }}</h1>
+{% if dataset.description %}<p>{{ dataset.description|linebreaksbr }}</p>{% endif %}
+<p><a href="{% url 'admin:research_platform_dataset_change' dataset.pk %}">Edit the dataset</a> · <a href="{% url 'datasets' %}">All datasets</a></p>
+
+<h2>Start a run</h2>
+{% if error %}{% include "research_platform/request_error.html" with error_heading="That can't be run:" %}{% endif %}
+<form class="settings" method="post" action="{% url 'dataset-run' dataset.pk %}">
+  {% csrf_token %}
+  <label>Aspect angles <input name="aspects" value="{{ aspects }}" placeholder="e.g. major,octile or 30,150"></label>
+  <label>Time scale
+    <select name="time_scale">
+      {% for name in time_scales %}<option value="{{ name }}"{% if name == time_scale %} selected{% endif %}>{{ name }}</option>{% endfor %}
+    </select>
+  </label>
+  <button type="submit">Run</button>
+</form>
+<p>A run computes a chart for each of the {{ size }} records, reusing any already stored under the same settings, and opens when it's done. Up to {{ limit }} records run here; larger datasets run with <code>python manage.py compute_dataset</code>.</p>
+
+<h2>Runs, newest first</h2>
+{% if runs %}
+<div class="scroll"><table>
+  <thead><tr><th class="name">Run</th><th class="name">Status</th><th>Aspect angles</th><th class="name">Time scale</th><th>Computed</th><th>Reused</th><th>Refused</th><th class="name">Started</th><th>Took (s)</th></tr></thead>
+  <tbody>
+  {% for described in runs %}
+  <tr data-run="{{ described.run.pk }}">
+    <td class="name"><a href="{% url 'run' described.run.pk %}">Run {{ described.run.pk }}</a></td>
+    <td class="name">{{ described.run.status }}</td>
+    <td class="aspects">{{ described.aspects|default:"none" }}</td>
+    <td class="name">{{ described.time_scale }}</td>
+    <td>{{ described.run.computed }}</td>
+    <td>{{ described.run.reused }}</td>
+    <td>{{ described.run.refused }}</td>
+    <td class="name">{{ described.run.started_at|date:"Y-m-d H:i:s T" }}</td>
+    <td>{% if described.duration is not None %}{{ described.duration.total_seconds|floatformat:2 }}{% endif %}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% else %}
+<p>None yet.</p>
+{% endif %}
+
+<h2>Records ({{ size }})</h2>
+<div class="scroll"><table>
+  <thead><tr><th class="name">Record</th><th class="name">Subject</th><th class="name">Reading</th><th class="name">Zone</th><th class="name">Source</th><th class="name">Chart</th></tr></thead>
+  <tbody>
+  {% for record in records %}
+  <tr data-record="{{ record.pk }}">
+    <td class="name"><a href="{% url 'admin:research_platform_record_change' record.pk %}">{{ record.pk }}</a></td>
+    <td class="name">{{ record.subject.label }}</td>
+    <td class="name">{{ record.reading }}</td>
+    <td class="name">{{ record.zone|default:record.get_time_kind_display }}</td>
+    <td class="name">{{ record.source.citation }}</td>
+    <td class="name"><a href="{% url 'record-chart' record.pk %}">Chart</a></td>
+  </tr>
+  {% empty %}
+  <tr><td class="name" colspan="6">None yet. <a href="{% url 'admin:research_platform_dataset_change' dataset.pk %}">Add records in the admin</a>.</td></tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% endblock %}

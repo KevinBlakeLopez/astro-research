@@ -1,0 +1,21 @@
+{% extends "research_platform/base.html" %}
+{% block title %}Datasets{% endblock %}
+{% block content %}
+<h1>Datasets</h1>
+{% if rows %}
+<table>
+  <thead><tr><th class="name">Dataset</th><th>Records</th><th class="name">Latest run</th></tr></thead>
+  <tbody>
+  {% for row in rows %}
+  <tr data-dataset="{{ row.dataset.pk }}">
+    <td class="name"><a href="{% url 'dataset' row.dataset.pk %}">{{ row.dataset.name }}</a></td>
+    <td class="size">{{ row.size }}</td>
+    <td class="name">{% if row.latest %}<a href="{% url 'run' row.latest.pk %}">Run {{ row.latest.pk }}</a>: {{ row.latest.status }}, started {{ row.latest.started_at|date:"Y-m-d H:i:s T" }}{% else %}none yet{% endif %}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>No datasets yet. <a href="{% url 'admin:research_platform_dataset_add' %}">Add one in the admin</a>.</p>
+{% endif %}
+{% endblock %}

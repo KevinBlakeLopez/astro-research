@@ -11,6 +11,9 @@ A run:
    computed and stored. The engine's refusal of a record is recorded and the run carries on;
 3. ends finished, with its counts. Any other error rolls back every outcome and chart of the
    run, marks it failed with the error, and is raised again.
+
+`run_dataset` does all three. A caller that shows the run even when it fails (the dataset's page)
+calls `start_run` and then `finish_run`, so it holds the run when the error is raised.
 """
 
 from django.conf import settings as django_settings
@@ -52,16 +55,28 @@ def run_dataset(
     """Every record of `dataset` under `settings`; opens the configured ephemeris if not given."""
     if eph is None:
         eph = Ephemeris.open(django_settings.EPHE_DIR)
-    run = CalculationRun.objects.create(
+    run = start_run(dataset, settings, eph)
+    finish_run(run, settings, eph)
+    return run
+
+
+def start_run(dataset: Dataset, settings: ChartSettings, eph: Ephemeris) -> CalculationRun:
+    """The run, recorded as running with what it runs with, before any outcome."""
+    return CalculationRun.objects.create(
         dataset=dataset,
         settings=CalculationRun.encode_settings(settings),
         engine_version=ENGINE_VERSION,
         ephemeris=CalculationRun.encode_ephemeris(eph.provenance),
         started_at=timezone.now(),
     )
+
+
+def finish_run(run: CalculationRun, settings: ChartSettings, eph: Ephemeris) -> None:
+    """Gives every record of the run's dataset an outcome and marks the run finished; on any
+    error that isn't a refusal, keeps none of them, marks the run failed and raises it again."""
     try:
         with transaction.atomic():
-            _give_outcomes(run, dataset, settings, eph)
+            _give_outcomes(run, run.dataset, settings, eph)
     except Exception as error:
         run.status = CalculationRun.Status.FAILED
         run.error_class = type(error).__name__
@@ -73,7 +88,6 @@ def run_dataset(
     run.status = CalculationRun.Status.FINISHED
     run.finished_at = timezone.now()
     run.save()
-    return run
 
 
 def _give_outcomes(

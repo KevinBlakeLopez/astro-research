@@ -1,0 +1,8 @@
+{% load measurements %}<table>
+  <thead><tr><th class="name">Point</th><th class="name">Event</th><th class="name">UTC</th><th>ARMC (°)</th></tr></thead>
+  <tbody>
+    {% for id, event in event_rows %}
+    <tr data-event="{{ id }}"><td class="name">{% if event.point.designation %}{{ event.point.designation }}{% else %}{{ event.point.value }}{% endif %}</td><td class="name">{{ event.event.value }}</td><td class="name">{{ event.time.instant.utc.isoformat }}</td><td>{{ event.armc|fixed }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>

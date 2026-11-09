@@ -5,7 +5,7 @@ from django.contrib import admin
 from django.contrib.auth import views as auth_views
 from django.urls import path
 
-from research_platform import eclipses_views, sensitivity_views, views
+from research_platform import eclipses_views, parans_views, sensitivity_views, views
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -36,6 +36,21 @@ urlpatterns = [
         name="record-sensitivity-detail",
     ),
     path("records/<int:pk>/eclipses/", eclipses_views.record_eclipses, name="record-eclipses"),
+    path("records/<int:pk>/parans/", parans_views.record_parans, name="record-parans"),
+    path(
+        "records/<int:pk>/parans/events/",
+        parans_views.record_parans_events,
+        name="record-parans-events",
+    ),
+    path(
+        "records/<int:pk>/parans/gaps/", parans_views.record_parans_gaps, name="record-parans-gaps"
+    ),
+    path(
+        "records/<int:pk>/parans/stars/",
+        parans_views.record_parans_stars,
+        name="record-parans-stars",
+    ),
+    path("records/<int:pk>/parans.csv", parans_views.record_parans_csv, name="record-parans-csv"),
     path(
         "records/<int:pk>/sensitivity.csv",
         sensitivity_views.record_sensitivity_csv,

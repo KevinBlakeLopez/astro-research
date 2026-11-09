@@ -1,0 +1,5 @@
+{% load measurements %}<ul>
+  {% for entry, designation, link in found %}
+  <li data-star="{{ designation }}">{{ entry.name }} ({{ designation }}), magnitude {{ entry.magnitude|fixed:2 }} · <a href="{{ link }}">Add</a></li>
+  {% endfor %}
+</ul>

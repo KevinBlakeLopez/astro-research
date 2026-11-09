@@ -1,0 +1,16 @@
+{% load measurements %}<p>Showing {{ gaps|length }} of {{ gap_count }} gaps, closest first. No orb is applied: how close counts is yours to decide.</p>
+<table>
+  <thead><tr><th class="name">First</th><th class="name">UTC</th><th class="name">Second</th><th class="name">UTC</th><th>Gap (s)</th><th>ARMC gap (°)</th></tr></thead>
+  <tbody>
+    {% for id, gap in gaps %}
+    <tr data-gap="{{ id }}">
+      <td class="name">{% if gap.first.point.designation %}{{ gap.first.point.designation }}{% else %}{{ gap.first.point.value }}{% endif %} {{ gap.first.event.value }}</td>
+      <td class="name">{{ gap.first.time.instant.utc.isoformat }}</td>
+      <td class="name">{% if gap.second.point.designation %}{{ gap.second.point.designation }}{% else %}{{ gap.second.point.value }}{% endif %} {{ gap.second.event.value }}</td>
+      <td class="name">{{ gap.second.time.instant.utc.isoformat }}</td>
+      <td>{{ gap.seconds|fixed:3 }}</td>
+      <td>{{ gap.armc|fixed }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>

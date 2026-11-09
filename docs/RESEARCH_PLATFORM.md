@@ -2,7 +2,7 @@
 
 `research-platform/` stores subjects, sources, birth records and datasets in PostgreSQL, and runs the engine over datasets. It's a Django project and a separate distribution, `research-platform`, which depends on the engine. The engine doesn't depend on it: no `astro_research` module imports Django, psycopg or the platform, and the engine's distribution depends on neither (`tests/test_boundary.py`).
 
-Django owns the schema (`research_platform/models.py` and its migrations). The web interface, described below, is the admin for entering data; a chart page, a birth-time sensitivity page and a nearest-eclipses page for each record; and a comparison of any two records.
+Django owns the schema (`research_platform/models.py` and its migrations). The web interface, described below, is the admin for entering data; a chart page, a birth-time sensitivity page, a nearest-eclipses page and a parans page for each record; and a comparison of any two records.
 
 ## What is stored
 
@@ -99,6 +99,18 @@ It runs on this machine only: it answers on 127.0.0.1 and localhost, and every p
   - **Not yet:** separations of an eclipse's degree from the birth chart's points. That's a new engine measurement, to be added there first.
 
   The chart page and the record's admin page link to it.
+- **Parans** (`/records/<id>/parans/`): every rise, set and transit in the project's window, birth ±12 hours of clock time (fixed), from the engine's `angular_events`, and the gaps between events of two different points (`paran_gaps`). Each body's actual position is used, ecliptic latitude included, topocentric.
+  - **Named in the address, never defaulted:**
+    - `bodies`: `all` or a comma-separated list;
+    - `stars`: catalogue designations without their leading comma (`alLeo,alTau`), at most 100;
+    - the horizon: `horizon=geometric` (disc centre, no refraction) or `horizon=almanac` (upper limb, 1013.25 hPa, 10 °C), or else `disc` with an optional `pressure` and `temperature` together.
+  - **Stars are checked against the verified catalogue exactly,** since Swiss Ephemeris's own lookup also finds `zePscB`, which the file doesn't have (observed). A search by name finds stars, and each result is a link that adds the star to those already named.
+  - **What it shows:** the events in time order, with their UTC instants and the ARMC, narrowed to one point if you like, and the bodies and stars Swiss Ephemeris reports as not rising or setting. Then the gaps, closest first, the first 100, narrowed by point or by kind (star–body, star–star, body–body). No orb is applied: how close counts is yours to decide.
+  - **The CSV download** lists every gap, with columns `first_point`, `first_event`, `first_utc`, `second_point`, `second_event`, `second_utc`, `seconds` and `armc`. Points are body names or designations, and values are at full precision.
+  - **Cost:** 50 stars and the ten bodies take about 30 ms and give 19,054 gaps (measured).
+  - **Refusals:** a refused record or window (the pole, past IERS's last day, outside the data files) shows its refusal; an unknown star, body or horizon shows the reason above the form.
+
+  The chart page and the record's admin page link to it.
 - **Comparing two records** (`/records/<a>/compare/<b>/`): twins, or two sources' records of one subject. Choose two records in the admin's record list and run **Compare the two selected records**; the older record is A, and the page can swap them.
   - **Both charts use the settings in the address,** as the engine's `compare()` requires, and every number is B minus A.
   - **It shows** both UTC readings, the civil and elapsed seconds between them, and the ARMC change. Then each point's longitude in A and B, with its changes. Then each pair's separation in A and B, its change, and A's and B's deviation from each named aspect angle.
@@ -155,6 +167,12 @@ cd research-platform && RESEARCH_DEBUG=1 uv run python manage.py runserver 127.0
 21. From the first record's chart page, follow **Nearest eclipses**. Expect a request for eclipse types and no eclipses.
 22. Enter `all` for both kinds and press **Show**. Expect four sections: the hybrid solar eclipse of 1987-03-29 and the annular one of 1987-09-23, and the penumbral lunar eclipses of 1987-04-14 and 1987-10-07. Each shows its degree at the syzygy.
 23. Enter `ring` as the solar types and press **Show**. Expect the reason above the form, with `ring` still in it.
+24. From the first record's chart page, follow **Parans**. Expect a request for bodies or stars and a horizon, and no events.
+25. Type `regul` in **Find a star by name**. Expect Regulus (alLeo), magnitude 1.40, with an **Add** link, without the page reloading. Follow **Add**.
+26. Enter `all` as the bodies, choose **geometric** as the horizon, and press **Show**. Expect the window's start and end, "Regulus,alLeo", the events in time order, and the closest 100 gaps.
+27. Under **Gaps**, choose **star-body** as the kind. Expect only gaps between Regulus and a body, without the page reloading.
+28. Follow **Download every gap as CSV**. Expect `parans-record-<id>.csv`.
+29. Enter `zePscB` as a star and press **Show**. Expect "'zePscB' is not in the star catalogue" above the form.
 
 ## Tests
 

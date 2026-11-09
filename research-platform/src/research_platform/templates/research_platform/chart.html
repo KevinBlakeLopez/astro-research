@@ -5,7 +5,8 @@
 <h1>{{ record.subject }}: {{ record.reading }}{% if record.zone %} {{ record.zone }}{% endif %}</h1>
 <p>Source: {{ record.source }} · <a href="{% url 'admin:research_platform_record_change' record.pk %}">Edit the record</a> ·
   <a href="{% url 'record-sensitivity' record.pk %}?{{ request.GET.urlencode }}">Birth-time sensitivity</a> ·
-  <a href="{% url 'record-eclipses' record.pk %}?{{ request.GET.urlencode }}">Nearest eclipses</a></p>
+  <a href="{% url 'record-eclipses' record.pk %}?{{ request.GET.urlencode }}">Nearest eclipses</a> ·
+  <a href="{% url 'record-parans' record.pk %}?{{ request.GET.urlencode }}">Parans</a></p>
 
 {% if error %}{% include "research_platform/request_error.html" %}{% endif %}
 <form class="settings" method="get">

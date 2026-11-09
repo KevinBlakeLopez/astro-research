@@ -1,0 +1,77 @@
+{% extends "research_platform/base.html" %}
+{% load measurements %}
+{% block title %}Parans: {{ record.subject }}{% endblock %}
+{% block content %}
+<h1>Parans: {{ record.subject }}, {{ record.reading }}{% if record.zone %} {{ record.zone }}{% endif %}</h1>
+<p><a href="{% url 'record-chart' record.pk %}?{{ query }}">The chart</a> · <a href="{% url 'admin:research_platform_record_change' record.pk %}">Edit the record</a></p>
+
+{% if error %}{% include "research_platform/request_error.html" %}{% endif %}
+<form id="parans-settings" class="settings" method="get">
+  <p>
+    <label>Bodies <input name="bodies" value="{{ bodies }}" placeholder="all, or e.g. sun,moon,mars"></label>
+    <label>Stars <input name="stars" value="{{ stars }}" size="40" placeholder="designations, e.g. alLeo,alTau"></label>
+  </p>
+  <p>
+    <label>Horizon
+      <select name="horizon">
+        <option value="">named below</option>
+        <option value="geometric"{% if horizon == "geometric" %} selected{% endif %}>geometric: disc centre, no refraction</option>
+        <option value="almanac"{% if horizon == "almanac" %} selected{% endif %}>almanac: upper limb, 1013.25 hPa, 10 °C</option>
+      </select>
+    </label>
+    or <label>disc
+      <select name="disc"><option value=""></option>{% for name in discs %}<option value="{{ name }}"{% if name == disc %} selected{% endif %}>{{ name }}</option>{% endfor %}</select>
+    </label>
+    <label>pressure (hPa) <input name="pressure" value="{{ pressure }}" size="7"></label>
+    <label>temperature (°C) <input name="temperature" value="{{ temperature }}" size="5"></label>
+  </p>
+  <p>
+    <label>Time scale
+      <select name="time_scale">
+        {% for name in time_scales %}<option value="{{ name }}"{% if name == time_scale %} selected{% endif %}>{{ name }}</option>{% endfor %}
+      </select>
+    </label>
+    <button type="submit">Show</button>
+  </p>
+</form>
+<p><label>Find a star by name <input name="q" placeholder="e.g. Regulus" hx-get="{% url 'record-parans-stars' record.pk %}" hx-trigger="keyup changed delay:300ms" hx-target="#star-results" hx-include="#parans-settings"></label></p>
+<div id="star-results"></div>
+<p>The window is the birth's UTC instant ±12 hours, as the project's convention has it. Events use each body's actual position, ecliptic latitude included, topocentric.</p>
+
+{% if error %}
+{% elif not complete %}
+<p>Name the bodies or stars, and a horizon convention: none are chosen for you.</p>
+{% elif refusal %}
+{% include "research_platform/refusal.html" %}
+{% else %}
+<p>Window {{ events.start.instant.utc.isoformat }} to {{ events.end.instant.utc.isoformat }} ·
+  {% for star, name in events.star_names %}{% if not forloop.first %}, {% endif %}{{ name }}{% endfor %} ·
+  <a href="{% url 'record-parans-csv' record.pk %}?{{ query }}">Download every gap as CSV</a></p>
+
+<h2>Events, in time order</h2>
+<form class="filter" hx-get="{% url 'record-parans-events' record.pk %}" hx-target="#events" hx-trigger="change" hx-include="#parans-settings">
+  <label>Involving
+    <select name="involving"><option value="">any point</option>{% for name in points %}<option value="{{ name }}"{% if name == event_filter %} selected{% endif %}>{{ name }}</option>{% endfor %}</select>
+  </label>
+</form>
+<div id="events" class="scroll">{% include "research_platform/parans_events.html" %}</div>
+{% if unrisen %}
+<p>Swiss Ephemeris reports these don't rise or set in the window (it can't tell circumpolar from never rising):</p>
+<ul>{% for item in unrisen %}<li data-unrisen="{{ item }}">{{ item }}</li>{% endfor %}</ul>
+{% endif %}
+
+<h2>Gaps</h2>
+<form class="filter" hx-get="{% url 'record-parans-gaps' record.pk %}" hx-target="#gaps" hx-trigger="change" hx-include="#parans-settings">
+  <label>Involving
+    <select name="involving"><option value="">any point</option>{% for name in points %}<option value="{{ name }}"{% if name == filter.involving %} selected{% endif %}>{{ name }}</option>{% endfor %}</select>
+  </label>
+  <label>Kind
+    <select name="kind"><option value="">any</option>{% for kind in kinds %}<option value="{{ kind }}"{% if kind == filter.kind %} selected{% endif %}>{{ kind }}</option>{% endfor %}</select>
+  </label>
+  <label>Show
+    <select name="limit"><option value="100">the closest 100</option><option value="all"{% if filter.limit is None %} selected{% endif %}>all</option></select>
+  </label>
+</form>
+<div id="gaps" class="scroll">{% include "research_platform/parans_gaps.html" %}</div>
+{% endif %}
+{% endblock %}

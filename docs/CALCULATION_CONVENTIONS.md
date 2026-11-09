@@ -60,7 +60,7 @@ Ambiguity is detected by resolving both folds and checking the round trip. Diffe
 
 ### 2.2 Time scales (`astronomical_time.py`, `TimeScale`)
 
-How a UTC reading becomes UT1 is a convention. The caller must name one in every chart, and the default is deliberately undecided.
+How a UTC reading becomes UT1 is a convention. The caller must name one in every chart: there's no default yet. Phase 2 will add a third scale that takes UT1 − UTC from a pinned IERS data file, and make that the default.
 
 | `TimeScale` | UT1 | Used by |
 |---|---|---|
@@ -72,6 +72,16 @@ The two scales compare as follows:
 - **After 1972** they differ by UT1 − UTC (at most 0.9 s). That moves the Ascendant by up to about 30″, roughly a third of a one-second birth-time difference.
 - **Under either scale**, TT = UT1 + `deltat_ex(UT1, FLG_SWIEPH)`, so positions are always consistent with the loaded DE441 files. Each `AstronomicalTime` records `jd_ut1`, `jd_tt`, `delta_t_s`, `ut1_minus_utc_s` and its time scale.
 - **Within a pair of charts** the choice almost cancels: it changes a one-minute Ascendant change by 0.025″ (1987). The exception is a pair that straddles a leap second. Under `CLOCK_AS_UT1` that second is lost in both TT and the angles: 60 s instead of 61, and the Ascendant's change 10.6″ smaller (2016-12-31).
+
+**Accuracy against measured UT1.** Measured against IERS's EOP 20 C04 series, daily from 1972-01-01 to 2026-10-10:
+
+| Births | `UT1_FROM_DELTA_T` error | `CLOCK_AS_UT1` error |
+|---|---|---|
+| 1972–2022 | ≤ 0.066 s (mean about 0.015 s) | up to 0.81 s |
+| 2023 | ≤ 0.085 s | ≤ 0.046 s |
+| 2024–2026 | 0.15–0.40 s, growing | ≤ 0.095 s |
+
+Swiss Ephemeris 2.10.03's ΔT table holds measured values up to 2023.0 and extrapolated ones for 2024–2028 (`swephlib.c:2426-2496`), and the Earth's rotation didn't follow the extrapolation. One second of time moves the Ascendant by about 33″ at London.
 
 `Ephemeris.time_from_tt` and `time_from_ut1` turn an event's Julian date back into an `AstronomicalTime`, by way of its UTC reading under the caller's time scale.
 - The reading is rounded to the microsecond.
@@ -234,6 +244,7 @@ How it behaves:
   Swiss Ephemeris's own instant differs from the refined one by up to 9.6 s for solar eclipses, because its definition differs. For lunar eclipses it differs by several seconds: the definition differs too, and its search stops up to 4 s short of its own exact minimum. The refined instants reproduce NASA's canon for 1901–2100 within 0.55 s (solar; NASA rounds to whole seconds) and 2.75 s (lunar).
 - **The syzygy** is the exact new or full moon, where the apparent geocentric longitudes are equal or 180° apart. It falls up to 18 minutes from greatest eclipse, which moves the Moon's longitude by up to 9.5′ for lunar eclipses.
 - **Each instant** carries the Sun's and Moon's full positions, so eclipse longitudes and declinations come from §4.
+- **An eclipse's degree and declination** (project convention, for rules built on the engine) are those at the syzygy: the Sun's for a solar eclipse, the Moon's for a lunar one. Greatest eclipse remains the eclipse's instant.
 - **Before and after** are strict, in TT, and decided by the refined instant.
 - **Which types count** is the caller's choice. `SOLAR_TYPES` and `LUNAR_TYPES` are named sets of every type of each kind.
 - **Refusals.** Eclipses outside the data files are refused.
@@ -241,7 +252,8 @@ How it behaves:
 ## 12. Parans, proof of concept (`parans.py`)
 
 `angular_events(eph, place, start=…, end=…, bodies=…, stars=…, horizon=…)` lists every rise, set, upper and lower meridian transit in [start, end). `paran_gaps(events)` gives the time gap and the ARMC gap for every pair of events of two different points. There's no orb, and nothing marks a pair as a paran.
-- **Positions.** The body's actual position, ecliptic latitude included, topocentric, as Swiss Ephemeris's `rise_trans` computes it. The zodiacal definition isn't covered, because Swiss Ephemeris's transits always use the body's actual right ascension.
+- **Positions.** The body's actual position, ecliptic latitude included, topocentric, as Swiss Ephemeris's `rise_trans` computes it. This is the project's chosen paran definition. The zodiacal definition isn't covered, because Swiss Ephemeris's transits always use the body's actual right ascension.
+- **Window.** The caller passes `start` and `end`. The project convention is 24 hours centred on the birth (birth ± 12 h), which is defined at every latitude; Phase 2 will add it as a named helper.
 - **Horizon convention**, named by the caller:
   - the disc point for the Sun and Moon (upper limb, centre or lower limb; stars are points);
   - refraction, as a stated pressure (> 0 hPa) and temperature, or none for the geometric horizon.

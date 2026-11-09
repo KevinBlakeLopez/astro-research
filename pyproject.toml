@@ -3,6 +3,8 @@ name = "astro-research"
 version = "0.1.0"
 description = "Headless astronomical calculation engine for exploratory astrology research"
 requires-python = ">=3.13"
+license = "AGPL-3.0-or-later"
+license-files = ["LICENSE"]
 dependencies = [
     "pysweph==2.10.3.6",
     "tzdata==2026.6",

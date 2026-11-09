@@ -5,7 +5,7 @@
 **Engine:** `astro-research` 0.1.0.
 **Repository state:** commit `0dff654` plus this report.
 
-Phase 1 stops here and waits for review. Nothing beyond it (the web application, database or rules) has been started.
+Phase 1 stops here and waits for review. Nothing beyond it (the web application, database or rules) has been started. The four decisions the report left open were made on 2026-11-09 and are recorded in section 16.
 
 **How numbers are labelled:**
 - **(test):** a bound the test suite enforces;
@@ -120,6 +120,7 @@ All three data files come from aloistr/swisseph `cae9ecd4b201544d85e411aced17660
 | Place of greatest eclipse vs NASA | up to 0.96° latitude, 1.51° longitude | measured; beyond NASA's whole-degree rounding, cause not investigated |
 | Star rise, set and transit vs ERFA `atco13` | first answers: 0.10 s (rise/set), 2.6 s (Polaris's transit); refined: 7.3 ms | test (refined); measured (first) |
 | Body rise, set and transit vs ERFA's horizon transform | first answers: Moon 0.11 s (rise/set), 0.69 s (transit); refined: 6.8 ms | test (refined); measured (first) |
+| Modelled UT1 − UTC (`UT1_FROM_DELTA_T`) vs IERS EOP 20 C04, daily 1972-01-01 to 2026-10-10 | ≤ 0.066 s for 1972–2022 (the clock convention: up to 0.81 s); 0.085 s in 2023, growing to 0.40 s by 2026-10 (the clock: ≤ 0.095 s) | measured. Swiss Ephemeris 2.10.03's ΔT table is extrapolated after 2023.0 (`swephlib.c:2426-2496`). |
 
 ### Within Swiss Ephemeris: data and behaviour
 
@@ -137,9 +138,7 @@ All three data files come from aloistr/swisseph `cae9ecd4b201544d85e411aced17660
 
 ## 6. Known limitations
 
-**Decisions left open:**
-- **The default time scale.** Every caller must name one.
-- **The project's licence** (section 7).
+**The time scale still has no default.** Every caller must name one until Phase 2 adds the IERS-based scale (section 16).
 
 **Coverage:**
 - **Dates:**
@@ -182,7 +181,7 @@ All three data files come from aloistr/swisseph `cae9ecd4b201544d85e411aced17660
 - **pysweph's wrapper code carries its own AGPL grant,** even though its `LICENSE` now holds the dual-licence notice. A Professional licence for Swiss Ephemeris might therefore not cover the binding (inferred; not legal advice).
   - The planned exit is a minimal binding of the project's own over a pinned Swiss Ephemeris commit.
   - That would matter for a non-AGPL deployment, for Swiss Ephemeris 3.0, or if pysweph lacked a wheel.
-- **This project's own licence hasn't been chosen.** With Swiss Ephemeris under the AGPL, it has to be AGPL-compatible unless a Professional licence is bought.
+- **This project is licensed AGPL-3.0-or-later** (`LICENSE`, and `license` in `pyproject.toml`), matching Swiss Ephemeris's AGPL option and pysweph's wrapper grant. If the platform is hosted for other people, its source must be offered to them.
 - **Other dependencies:**
   - tzdata is Apache-2.0;
   - pyerfa is BSD-3-Clause, and numpy BSD-3-Clause with others (test-only);
@@ -277,19 +276,15 @@ None of that was attempted in Phase 1, which only read its source.
 ## 13. Proposed fixed-star paran implementation
 
 **The proof of concept exists** (`parans.py`, section 1), checked against ERFA to 7.3 ms. Proposed next steps:
-1. **Windows as explicit, named choices:**
-   - the local birth date;
-   - sunrise to sunrise (Morinus's choice);
-   - birth ± 12 h.
+1. **A window helper for the chosen convention,** birth ± 12 h (section 16). Other windows (sunrise to sunrise, the local date) only if a hypothesis needs them.
 2. **Circumpolar or never rising,** decided from the body's altitude at its transits. Swiss Ephemeris can't tell the two apart.
-3. **The zodiacal definition:**
-   - rising, through Swiss Ephemeris's geocentric, latitude-free mode;
-   - culmination (the MC on the body's degree), through a solver of the project's own.
-4. **Optionally, a geocentric actual-position definition,** with the project's own altitude solver.
-5. **Star lists** chosen by designation, with magnitudes. Paran gaps stay continuous numbers; any orb is the researcher's rule.
-6. **Cost:** 0.01 ms per body and 0.04 ms per star per Swiss Ephemeris call (measured). A day's events for 10 bodies and 50 stars, refined, is on the order of a thousand calls, tens of milliseconds (estimated, not measured).
-7. **Tests:**
-   - extend the ERFA checks to the zodiacal definition and the window helpers;
+3. **Only if a hypothesis needs them,** other definitions than the chosen one (section 16):
+   - the zodiacal definition: rising through Swiss Ephemeris's geocentric, latitude-free mode; culmination (the MC on the body's degree) through a solver of the project's own;
+   - a geocentric actual-position definition, with the project's own altitude solver.
+4. **Star lists** chosen by designation, with magnitudes. Paran gaps stay continuous numbers; any orb is the researcher's rule.
+5. **Cost:** 0.01 ms per body and 0.04 ms per star per Swiss Ephemeris call (measured). A day's events for 10 bodies and 50 stars, refined, is on the order of a thousand calls, tens of milliseconds (estimated, not measured).
+6. **Tests:**
+   - extend the ERFA checks to the window helper, and to any further definition a hypothesis adds;
    - optionally cross-check `-L0` latitudes against Astrolog after its battery (section 12).
 
 ## 14. Proposed eclipse implementation
@@ -303,18 +298,14 @@ None of that was attempted in Phase 1, which only read its source.
 Swiss Ephemeris provides the search, classification and attributes. The refinement, the syzygy, the positions at the instant and the date refusals are the project's own.
 
 Proposed next steps:
-1. **The research convention for an eclipse's "degree"** is undecided: greatest eclipse or syzygy, and the Sun or the Moon. They differ by up to 9.5′ for lunar eclipses (measured), so the researcher should choose.
+1. **The eclipse degree is decided** (section 16): the syzygy, with the Sun's position for solar eclipses and the Moon's for lunar ones. A rules layer reads `eclipse.syzygy.sun` or `eclipse.syzygy.moon`.
 2. **Local circumstances at the birthplace:** visibility, contacts and magnitude there (`sol_eclipse_when_loc`/`how`).
 3. **Investigate the unexplained residuals** against NASA: lunar times, non-central magnitudes and the place of greatest eclipse.
 4. **More eclipses,** such as the nearest N on each side, if research needs them.
 
 ## 15. Recommended scope for Phase 2
 
-1. **Decisions to make first:**
-   - the default time scale, or keeping it required;
-   - the project's licence;
-   - the eclipse-degree convention;
-   - the paran window and definition.
+1. **The IERS-based time scale** (section 16): UT1 − UTC from a pinned IERS C04 file, by hash like the ephemeris files, refusing dates past its last day unless another scale is named. It becomes the default.
 2. **A result serialisation format** (likely JSON with a schema) that keeps full precision and provenance. Then persistence in PostgreSQL keyed by the calculation key, with subjects, sources, datasets and outcomes as separate tables.
 3. **A batch runner:**
    - process-based;
@@ -325,7 +316,17 @@ Proposed next steps:
 6. **Only then the Django application,** on a stable engine interface.
 7. **Optional:**
    - pinning pre-1800 data files;
-   - an Astrolog reference battery;
-   - IERS UT1 − UTC values if `UT1_FROM_DELTA_T` becomes the default.
+   - an Astrolog reference battery.
 
 Research rules (orbs, weights, scores) stay outside the engine until the researcher defines them.
+
+## 16. Decisions after review (2026-11-09)
+
+| Question | Decision | Evidence and consequences |
+|---|---|---|
+| The default time scale | **Required for now. Phase 2 adds a scale taking UT1 − UTC from a pinned IERS file, and makes it the default.** | Measured against IERS EOP 20 C04 (section 5): Swiss Ephemeris's model is within 0.066 s for 1972–2022 but drifts to 0.40 s by late 2026, because its ΔT table is extrapolated after 2023.0. The clock convention is off by up to 0.81 s before 2023. IERS's own values are accurate to about 20 µs. Dates past the pinned file's last day will be refused unless another scale is named. |
+| The project's licence | **AGPL-3.0-or-later** | Matches Swiss Ephemeris's AGPL option and pysweph's own grant, with no Professional licence and no binding replacement. All other dependencies are compatible. If the platform is hosted for others, its source must be offered to them. |
+| An eclipse's degree and declination | **At the syzygy: the Sun's position for solar eclipses, the Moon's for lunar ones** | Sun and Moon are then exactly aligned in longitude. The engine already returns both instants and both bodies, so nothing in the code changes; greatest eclipse stays the eclipse's instant. |
+| The paran window and definition | **Birth ± 12 hours; the body's actual position, topocentric** | The window is symmetric, independent of time zones, and defined at every latitude, unlike sunrise to sunrise. The definition is the one already built and checked against ERFA to 7.3 ms. Phase 2 adds the window as a named helper. |
+
+None of these changed the engine's code, so calculation keys are unchanged.

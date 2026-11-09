@@ -123,6 +123,6 @@ chart = compute_chart(eph, record, settings)
 
 **Swiss Ephemeris is dual-licensed: AGPL or the paid Swiss Ephemeris Professional License.** That covers the C library inside the pysweph binding and the data files fetched above. Using it under the AGPL places obligations on the whole project once software is distributed or a public service is run. See [docs/DEPENDENCY_ASSESSMENT.md](docs/DEPENDENCY_ASSESSMENT.md).
 
-**This project's own licence hasn't been chosen yet.**
+**This project is licensed under the GNU Affero General Public License, version 3 or later** ([LICENSE](LICENSE)), matching Swiss Ephemeris's AGPL option.
 
 NASA's eclipse predictions in `tests/fixtures/` carry NASA's requested acknowledgments: "Eclipse Predictions by Fred Espenak (NASA's GSFC)" for solar eclipses, and "Eclipse Predictions by Fred Espenak and Jean Meeus (NASA's GSFC)" for lunar ones.

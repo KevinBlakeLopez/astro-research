@@ -61,6 +61,7 @@ def test_verified_environment_reports_its_provenance(fetched_ephe: Path) -> None
     assert provenance.swisseph_version == "2.10.03"
     assert provenance.source_commit == manifest.source_commit
     assert dict(provenance.file_sha256) == {f.name: f.sha256 for f in manifest.files}
+    assert provenance.ut1_data_sha256 == manifest.ut1_data.sha256
 
 
 def test_the_verified_folder_serves_the_pinned_star_catalogue(fetched_ephe: Path) -> None:

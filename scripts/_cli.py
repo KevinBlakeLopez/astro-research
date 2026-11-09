@@ -36,6 +36,7 @@ ASPECT_SETS = {"major": MAJOR, "octile": OCTILE}
 TIME_SCALES = {
     "clock-as-ut1": TimeScale.CLOCK_AS_UT1,
     "ut1-from-delta-t": TimeScale.UT1_FROM_DELTA_T,
+    "ut1-from-iers": TimeScale.UT1_FROM_IERS,
 }
 # Every refusal the engine can raise for a record or settings; printed, never guessed around.
 REFUSALS = (
@@ -86,7 +87,10 @@ def add_record_options(parser: argparse.ArgumentParser, prefix: str = "") -> Non
 
 def add_settings_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
-        "--time-scale", choices=sorted(TIME_SCALES), required=True, help="how UTC becomes UT1"
+        "--time-scale",
+        choices=sorted(TIME_SCALES),
+        default="ut1-from-iers",
+        help="how UTC becomes UT1 (default ut1-from-iers)",
     )
     parser.add_argument(
         "--aspects",

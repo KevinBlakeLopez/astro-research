@@ -65,6 +65,7 @@ def render(chart: Chart) -> str:
         f"jd tt            {time.jd_tt!r}",
         f"delta t s        {time.delta_t_s:.6f}",
         f"ut1 - utc s      {time.ut1_minus_utc_s:.6f}",
+        f"ut1 basis        {time.ut1_basis.value}",
         f"calculation key  {chart.calculation_key}",
         "",
         "== Positions (degrees; speeds per day; distance in AU)",

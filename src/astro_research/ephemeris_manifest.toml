@@ -33,3 +33,16 @@ covers = "fixed stars brighter than magnitude 5, 1360 records"
 size = 136618
 sha256 = "18b0dcafbe5b7240773daba2c038a325f5b3fc4163f61e0a7f4e92abd4f517c6"
 header = "sefstars.txt: Swiss Ephemeris fixed stars data file; last change recorded 2-mar-24."
+
+# UT1 - UTC from IERS, for TimeScale.UT1_FROM_IERS. It ships inside the package (it isn't
+# fetched); scripts/derive_ut1_data.py derives it from a download of the source. IERS revises
+# its latest values in later releases, and a new table changes every calculation key.
+[ut1_data]
+name = "iers_eop20c04_ut1.txt"
+source_url = "https://hpiers.obspm.fr/iers/eop/eopc04/eopc04.1962-now"
+source_sha256 = "5e98a6a8a9da876d94f735b17f557947048c8dded116e05c8433a1167860fb90"
+source_last_modified = "Mon, 09 Nov 2026 14:21:06 GMT"
+first_day = "1972-01-01"
+last_day = "2026-10-10"
+size = 330835
+sha256 = "21958501c1485ddd00a8f00005a570d4dbeb9bcf1620c10950c78f64a8071a3a"

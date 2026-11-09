@@ -3,7 +3,7 @@
 **Scope:** an astronomical calculation engine and technical feasibility spike.
 **Dates:** 2026-10-31 to 2026-11-07.
 **Engine:** `astro-research` 0.1.0.
-**Repository state:** commit `0dff654` plus this report.
+**Repository state:** commit `f2ba733` plus this report.
 
 Phase 1 stops here and waits for review. Nothing beyond it (the web application, database or rules) has been started. The four decisions the report left open were made on 2026-11-09 and are recorded in section 16.
 

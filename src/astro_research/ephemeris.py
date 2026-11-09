@@ -9,28 +9,40 @@ fails closed (decision D1), so `verify_ephemeris()` confirms, in order:
    returned flag says so, and each loaded file lies inside the folder with the manifest's DE
    number. That catches an SE_EPHE_PATH override, which takes priority over set_ephe_path.
 
+It also checks the packaged IERS UT1 table against the manifest's SHA-256.
+
 The ephemeris path is process-wide state in Swiss Ephemeris; this module owns it. Calculations
 go through an `Ephemeris` handle, which only `Ephemeris.open()` creates (after the check) and
-which refuses to calculate once the path has moved elsewhere.
+which refuses to calculate once the path has moved elsewhere. Swiss Ephemeris's delta-T setting
+is process-wide too: this module sets it only for single calls, and restores the model after.
 """
 
 import base64
+import bisect
+import contextlib
+import functools
 import hashlib
 import importlib.metadata
 import importlib.resources
 import os
 import re
 import tomllib
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
+from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import assert_never
 
 import swisseph as swe
 
 from astro_research.angles import ANGLE_CONVENTIONS, Angles, AnglesUndefined
-from astro_research.astronomical_time import AstronomicalTime, InstantInLeapSecond, TimeScale
+from astro_research.astronomical_time import (
+    AstronomicalTime,
+    InstantInLeapSecond,
+    TimeScale,
+    Ut1Basis,
+)
 from astro_research.civil_time import ResolvedInstant, UtcTime, resolve
 from astro_research.eclipses import (
     EclipseAttributes,
@@ -56,6 +68,8 @@ from astro_research.positions import (
 )
 
 _PROBE_JD_UT = 2451545.0  # 2000-01-01 12:00 UT, inside the pinned files
+_JD_1972 = 2441317.5  # 1972-01-01 0h UTC: UTC with leap seconds from then; civil time was UT before
+_MJD_EPOCH = date(1858, 11, 17)
 _active_folder: Path | None = None  # the verified folder Swiss Ephemeris currently points at
 _OPEN = object()  # only Ephemeris.open() holds this, so only it can construct a handle
 _SE_POINT: dict[Point, int] = {
@@ -148,6 +162,10 @@ class DateOutsideEphemeris(EphemerisEnvironmentError):
     """The requested date needs data files the manifest does not pin."""
 
 
+class DateOutsideUt1Data(DateOutsideEphemeris):
+    """The instant is after the packaged IERS UT1 table's last day; name another time scale."""
+
+
 @dataclass(frozen=True, kw_only=True)
 class ManifestFile:
     name: str
@@ -158,11 +176,24 @@ class ManifestFile:
 
 
 @dataclass(frozen=True, kw_only=True)
+class Ut1DataEntry:
+    name: str
+    source_url: str
+    source_sha256: str
+    source_last_modified: str
+    first_day: str
+    last_day: str
+    size: int
+    sha256: str
+
+
+@dataclass(frozen=True, kw_only=True)
 class EphemerisManifest:
     de_number: int
     source_commit: str
     url_template: str
     files: tuple[ManifestFile, ...]
+    ut1_data: Ut1DataEntry
 
     def url(self, name: str) -> str:
         return self.url_template.format(commit=self.source_commit, name=name)
@@ -175,6 +206,7 @@ class EphemerisProvenance:
     de_number: int  # as reported by Swiss Ephemeris for the loaded files
     source_commit: str
     file_sha256: tuple[tuple[str, str], ...]  # (file name, verified SHA-256)
+    ut1_data_sha256: str  # the packaged IERS UT1 table, verified
 
 
 def load_manifest() -> EphemerisManifest:
@@ -185,6 +217,7 @@ def load_manifest() -> EphemerisManifest:
         source_commit=raw["source_commit"],
         url_template=raw["url_template"],
         files=tuple(ManifestFile(**entry) for entry in raw["files"]),
+        ut1_data=Ut1DataEntry(**raw["ut1_data"]),
     )
 
 
@@ -193,6 +226,7 @@ def verify_ephemeris(ephe_dir: Path) -> EphemerisProvenance:
     manifest = load_manifest()
     binding = _verify_binding()
     _verify_files(ephe_dir, manifest)
+    _packaged_ut1()
     _verify_loaded(ephe_dir, manifest)
     return EphemerisProvenance(
         binding=binding,
@@ -200,7 +234,77 @@ def verify_ephemeris(ephe_dir: Path) -> EphemerisProvenance:
         de_number=manifest.de_number,
         source_commit=manifest.source_commit,
         file_sha256=tuple((f.name, f.sha256) for f in manifest.files),
+        ut1_data_sha256=manifest.ut1_data.sha256,
     )
+
+
+@dataclass(frozen=True, kw_only=True)
+class Ut1Table:
+    """IERS's daily UT1 - UTC, held as delta-T at each day's 0h UTC.
+
+    Delta-T (TT - UT1) has no leap-second steps, so interpolating it in TT runs smoothly across
+    a leap second, where UT1 - UTC jumps by a whole second.
+    """
+
+    first_day: date
+    last_day: date
+    tt: tuple[float, ...]  # TT Julian date of each day's 0h UTC
+    delta_t_s: tuple[float, ...]  # delta-T there: 32.184 s + (TAI - UTC) - (UT1 - UTC)
+
+    @property
+    def first_ut1(self) -> float:
+        """UT1 Julian date of the first day's 0h UTC."""
+        return self.tt[0] - self.delta_t_s[0] / 86400
+
+    def delta_t_at_tt(self, jd_tt: float) -> float:
+        """Delta-T in seconds at `jd_tt`, linear between days; the caller keeps it in range."""
+        i = min(max(bisect.bisect_right(self.tt, jd_tt) - 1, 0), len(self.tt) - 2)
+        fraction = (jd_tt - self.tt[i]) / (self.tt[i + 1] - self.tt[i])
+        return self.delta_t_s[i] + fraction * (self.delta_t_s[i + 1] - self.delta_t_s[i])
+
+    def tt_from_ut1(self, jd_ut1: float) -> float:
+        """TT such that TT - delta-T(TT) = UT1. Delta-T changes by under 5 ms a day (since 1972,
+        measured), so each step shrinks the error by a factor of 10^7; three are plenty."""
+        jd_tt = jd_ut1 + self.delta_t_s[0] / 86400
+        for _ in range(3):
+            jd_tt = jd_ut1 + self.delta_t_at_tt(jd_tt) / 86400
+        return jd_tt
+
+
+def verify_ut1_data(source: Traversable) -> Ut1Table:
+    """Check a UT1 table against the manifest's size and SHA-256, then read it."""
+    entry = load_manifest().ut1_data
+    data = source.read_bytes()
+    if len(data) != entry.size or hashlib.sha256(data).hexdigest() != entry.sha256:
+        raise EphemerisFileError(f"{source.name} does not match the manifest's ut1_data")
+    first_day, last_day = date.fromisoformat(entry.first_day), date.fromisoformat(entry.last_day)
+    rows = [line.split() for line in data.decode("ascii").splitlines() if not line.startswith("#")]
+    expected = range((first_day - _MJD_EPOCH).days, (last_day - _MJD_EPOCH).days + 1)
+    if [int(mjd) for mjd, _ in rows] != list(expected):
+        raise EphemerisFileError(f"{source.name} lacks days between {first_day} and {last_day}")
+    tt: list[float] = []
+    delta_t_s: list[float] = []
+    for mjd, ut1_minus_utc in rows:
+        day = _MJD_EPOCH + timedelta(days=int(mjd))
+        jd_tt, _ = swe.utc_to_jd(day.year, day.month, day.day, 0, 0, 0.0, swe.GREG_CAL)
+        tt_minus_utc = (jd_tt - (int(mjd) + 2400000.5)) * 86400
+        tai_minus_utc = round(tt_minus_utc - 32.184)
+        # Swiss Ephemeris counts leap seconds from its own table; where its delta-T model says
+        # some are missing (from 2034, observed), it takes the reading as UT1 instead.
+        if abs(tt_minus_utc - 32.184 - tai_minus_utc) > 1e-3:
+            raise EphemerisNotLoaded(f"Swiss Ephemeris has no leap-second count for {day}")
+        tt.append(jd_tt)
+        delta_t_s.append(32.184 + tai_minus_utc - float(ut1_minus_utc))
+    return Ut1Table(
+        first_day=first_day, last_day=last_day, tt=tuple(tt), delta_t_s=tuple(delta_t_s)
+    )
+
+
+@functools.cache
+def _packaged_ut1() -> Ut1Table:
+    """The table inside the package, verified once per process and then kept in memory."""
+    name = load_manifest().ut1_data.name
+    return verify_ut1_data(importlib.resources.files("astro_research").joinpath(name))
 
 
 def _verify_binding() -> str:
@@ -303,30 +407,39 @@ class Ephemeris:
         clock = swe.julday(utc.year, utc.month, utc.day, hours, swe.GREG_CAL)
         match time_scale:
             case TimeScale.CLOCK_AS_UT1:
-                jd_ut1 = clock
+                return _time_with_model_tt(
+                    instant, time_scale, clock, clock, Ut1Basis.CLOCK_READING
+                )
             case TimeScale.UT1_FROM_DELTA_T:
                 _, jd_ut1 = swe.utc_to_jd(
                     utc.year, utc.month, utc.day, utc.hour, utc.minute, seconds, swe.GREG_CAL
                 )
+                basis = Ut1Basis.CIVIL_TIME_AS_UT if clock < _JD_1972 else Ut1Basis.DELTA_T_MODEL
+                return _time_with_model_tt(instant, time_scale, clock, jd_ut1, basis)
+            case TimeScale.UT1_FROM_IERS:
+                if clock < _JD_1972:
+                    basis = Ut1Basis.CIVIL_TIME_AS_UT
+                    return _time_with_model_tt(instant, time_scale, clock, clock, basis)
+                table = _packaged_ut1()
+                if utc > datetime.combine(table.last_day, datetime.min.time(), UTC):
+                    raise _after_ut1_data(table, f"{utc:%Y-%m-%d %H:%M:%S.%f} UTC")
+                jd_tt, _ = swe.utc_to_jd(
+                    utc.year, utc.month, utc.day, utc.hour, utc.minute, seconds, swe.GREG_CAL
+                )
+                delta_t_s = table.delta_t_at_tt(jd_tt)
+                # TT - UTC is 32.184 s plus a whole number of leap seconds (TAI - UTC).
+                tai_minus_utc = round((jd_tt - clock) * 86400 - 32.184)
+                return AstronomicalTime(
+                    instant=instant,
+                    time_scale=time_scale,
+                    jd_ut1=jd_tt - delta_t_s / 86400,
+                    jd_tt=jd_tt,
+                    delta_t_s=delta_t_s,
+                    ut1_minus_utc_s=32.184 + tai_minus_utc - delta_t_s,
+                    ut1_basis=Ut1Basis.IERS_C04,
+                )
             case _:
                 assert_never(time_scale)
-        # TT exactly as calc_ut derives it from UT1, i.e. with delta-T for the loaded DE.
-        # utc_to_jd's own TT uses DE431's value, which differs before 1955 (0.30 s at 1800).
-        # deltat_ex follows the tidal term of whichever files Swiss Ephemeris has opened, flag or
-        # not (observed for 1800-06-01: 18.4180 s before any file is open, 18.7137 s after).
-        # A handle exists only after the startup probe opened the pinned files, so this is the
-        # DE441 value.
-        delta_t, serr = swe.deltat_ex(jd_ut1, swe.FLG_SWIEPH)
-        if serr:
-            raise EphemerisNotLoaded(f"delta-T: {serr.strip()}")
-        return AstronomicalTime(
-            instant=instant,
-            time_scale=time_scale,
-            jd_ut1=jd_ut1,
-            jd_tt=jd_ut1 + delta_t,
-            delta_t_s=delta_t * 86400,
-            ut1_minus_utc_s=(jd_ut1 - clock) * 86400,
-        )
 
     def positions(self, time: AstronomicalTime, bodies: Iterable[Point] = tuple(Body)) -> Positions:
         """Positions at `time`'s TT of bodies and lunar points; duplicates are dropped.
@@ -393,27 +506,28 @@ class Ephemeris:
     def time_from_tt(self, jd_tt: float, time_scale: TimeScale) -> AstronomicalTime:
         """The instant `jd_tt` (TT) as the AstronomicalTime of its UTC reading under `time_scale`.
 
-        UT1 is TT minus Swiss Ephemeris's delta-T, as in `time()`. Under CLOCK_AS_UT1 the UTC
-        reading is UT1 itself, so it never falls in a leap second; under UT1_FROM_DELTA_T an
-        instant inside a leap second has no reading and is refused. The reading is rounded to the
-        microsecond, so the result's jd_tt differs from `jd_tt` by up to 0.5 us plus Julian-date
-        rounding (about 40 us).
+        Under CLOCK_AS_UT1 the reading is UT1 (TT minus Swiss Ephemeris's delta-T), so it never
+        falls in a leap second. Under the other two it is TT's own UTC, and an instant inside a
+        leap second has no reading and is refused; UT1_FROM_IERS also refuses an instant after
+        its table's last day, and reads one before 1972 as the clock convention does. The reading
+        is rounded to the microsecond, so the result's jd_tt differs from `jd_tt` by up to 0.5 us
+        plus Julian-date rounding (about 40 us).
         """
         self._require_active()
-        jd_ut1 = _ut1_from_tt(jd_tt)
         match time_scale:
             case TimeScale.CLOCK_AS_UT1:
-                year, month, day, hours = swe.revjul(jd_ut1, swe.GREG_CAL)
-                reading = datetime(year, month, day, tzinfo=UTC) + timedelta(hours=hours)
+                reading = _reading_of_ut1(_ut1_from_tt(jd_tt))
             case TimeScale.UT1_FROM_DELTA_T:
-                year, month, day, hour, minute, seconds = swe.jdut1_to_utc(jd_ut1, swe.GREG_CAL)
-                if seconds >= 60:
-                    raise InstantInLeapSecond(
-                        f"JD {jd_tt} TT falls in the leap second {year}-{month:02d}-{day:02d} "
-                        f"{hour:02d}:{minute:02d}:{seconds:.6f} UTC"
-                    )
-                start = datetime(year, month, day, hour, minute, tzinfo=UTC)
-                reading = start + timedelta(seconds=seconds)
+                parts = swe.jdut1_to_utc(_ut1_from_tt(jd_tt), swe.GREG_CAL)
+                reading = _utc_reading(jd_tt, *parts)
+            case TimeScale.UT1_FROM_IERS:
+                table = _packaged_ut1()
+                if jd_tt < table.tt[0]:
+                    reading = _reading_of_ut1(_ut1_from_tt(jd_tt))
+                elif jd_tt > table.tt[-1]:
+                    raise _after_ut1_data(table, f"JD {jd_tt} TT")
+                else:
+                    reading = _utc_reading(jd_tt, *swe.jdet_to_utc(jd_tt, swe.GREG_CAL))
             case _:
                 assert_never(time_scale)
         return self.time(resolve(UtcTime(utc=reading), _NOWHERE), time_scale)
@@ -446,12 +560,12 @@ class Ephemeris:
             estimate_jd_tt=estimate_ut1 + _delta_t_days(estimate_ut1),
         )
 
-    def eclipse_attributes(self, kind: EclipseKind, jd_tt: float) -> EclipseAttributes:
-        """Magnitudes, saros and (solar) the place of greatest eclipse, at `jd_tt`."""
+    def eclipse_attributes(self, kind: EclipseKind, time: AstronomicalTime) -> EclipseAttributes:
+        """Magnitudes, saros and (solar) the place of greatest eclipse, at `time`."""
         self._require_active()
-        jd_ut1 = _ut1_from_tt(jd_tt)
         if kind is EclipseKind.SOLAR:
-            _, where, attr = swe.sol_eclipse_where(jd_ut1, swe.FLG_SWIEPH)
+            with _swiss_ephemeris_delta_t(_iers_delta_t_s(time)):
+                _, where, attr = swe.sol_eclipse_where(time.jd_ut1, swe.FLG_SWIEPH)
             return EclipseAttributes(
                 magnitude=attr[8],  # NASA's definition, per the Swiss Ephemeris manual
                 penumbral_magnitude=None,
@@ -459,7 +573,8 @@ class Ephemeris:
                 saros_member=_saros(attr[10]),
                 place_of_greatest=GeoPosition(latitude=where[1], longitude=where[0]),
             )
-        _, attr = swe.lun_eclipse_how(jd_ut1, (0.0, 0.0, 0.0), swe.FLG_SWIEPH)
+        with _swiss_ephemeris_delta_t(_iers_delta_t_s(time)):
+            _, attr = swe.lun_eclipse_how(time.jd_ut1, (0.0, 0.0, 0.0), swe.FLG_SWIEPH)
         return EclipseAttributes(
             magnitude=attr[0],  # umbral
             penumbral_magnitude=attr[1],
@@ -481,6 +596,11 @@ class Ephemeris:
     def time_from_ut1(self, jd_ut1: float, time_scale: TimeScale) -> AstronomicalTime:
         """`time_from_tt` for a UT1 Julian date, as Swiss Ephemeris's rise/set functions return."""
         self._require_active()
+        if time_scale is TimeScale.UT1_FROM_IERS:
+            table = _packaged_ut1()
+            # 1972 began 0.045 s earlier in UT1 than the civil reading did: that overlap is IERS's.
+            if jd_ut1 >= table.first_ut1:
+                return self.time_from_tt(table.tt_from_ut1(jd_ut1), time_scale)
         return self.time_from_tt(jd_ut1 + _delta_t_days(jd_ut1), time_scale)
 
     def star_name(self, star: FixedStar) -> str:
@@ -500,6 +620,7 @@ class Ephemeris:
         start_jd_ut1: float,
         place: GeoPosition,
         horizon: HorizonConvention,
+        time_scale: TimeScale,
     ) -> float | None:
         """The UT1 Julian date of the next `event` after `start_jd_ut1`, or None when Swiss
         Ephemeris reports no rising or setting (circumpolar or never rising, it cannot say which).
@@ -507,6 +628,11 @@ class Ephemeris:
         Topocentric and in mundo (Swiss Ephemeris's default positions). Swiss Ephemeris falls back
         to its Moshier model outside the data files without saying so, so callers check dates;
         resolve a star with `star_name` first, which refuses an unknown one.
+
+        Swiss Ephemeris finds the event's TT with its own delta-T. Under UT1_FROM_IERS it is given
+        IERS's at the search's start instead: delta-T changes by under 5 ms over the day a search
+        can cover (since 1972, measured), and a search started just before the event, as parans
+        refine theirs, has it to microseconds.
         """
         self._require_active()
         rsmi = _RISE_TRANS_EVENT[event]
@@ -520,9 +646,13 @@ class Ephemeris:
             temperature = horizon.refraction.temperature_c
         target = point.designation if isinstance(point, FixedStar) else _SE_POINT[point]
         geopos = (place.longitude, place.latitude, place.elevation_m)
-        code, tret = swe.rise_trans(
-            start_jd_ut1, target, rsmi, geopos, pressure, temperature, swe.FLG_SWIEPH
-        )
+        delta_t_s = None
+        if time_scale is TimeScale.UT1_FROM_IERS:
+            delta_t_s = _iers_delta_t_at_ut1(start_jd_ut1)
+        with _swiss_ephemeris_delta_t(delta_t_s):
+            code, tret = swe.rise_trans(
+                start_jd_ut1, target, rsmi, geopos, pressure, temperature, swe.FLG_SWIEPH
+            )
         if code == -2:
             return None
         found: float = tret[0]
@@ -568,6 +698,84 @@ def _ut1_from_tt(jd_tt: float) -> float:
     for _ in range(3):
         jd_ut1 = jd_tt - _delta_t_days(jd_ut1)
     return jd_ut1
+
+
+def _time_with_model_tt(
+    instant: ResolvedInstant, time_scale: TimeScale, clock: float, jd_ut1: float, basis: Ut1Basis
+) -> AstronomicalTime:
+    """The time whose UT1 is `jd_ut1`, with TT from Swiss Ephemeris's delta-T."""
+    # TT exactly as calc_ut derives it from UT1, i.e. with delta-T for the loaded DE.
+    # utc_to_jd's own TT uses DE431's value, which differs before 1955 (0.30 s at 1800).
+    # deltat_ex follows the tidal term of whichever files Swiss Ephemeris has opened, flag or
+    # not (observed for 1800-06-01: 18.4180 s before any file is open, 18.7137 s after).
+    # A handle exists only after the startup probe opened the pinned files, so this is the
+    # DE441 value.
+    delta_t = _delta_t_days(jd_ut1)
+    return AstronomicalTime(
+        instant=instant,
+        time_scale=time_scale,
+        jd_ut1=jd_ut1,
+        jd_tt=jd_ut1 + delta_t,
+        delta_t_s=delta_t * 86400,
+        ut1_minus_utc_s=(jd_ut1 - clock) * 86400,
+        ut1_basis=basis,
+    )
+
+
+def _reading_of_ut1(jd_ut1: float) -> datetime:
+    """The UTC reading that the clock convention (or civil time before 1972) takes as UT1."""
+    year, month, day, hours = swe.revjul(jd_ut1, swe.GREG_CAL)
+    return datetime(year, month, day, tzinfo=UTC) + timedelta(hours=hours)
+
+
+def _utc_reading(
+    jd_tt: float, year: int, month: int, day: int, hour: int, minute: int, seconds: float
+) -> datetime:
+    """A UTC reading from Swiss Ephemeris's parts; refused inside a leap second."""
+    if seconds >= 60:
+        raise InstantInLeapSecond(
+            f"JD {jd_tt} TT falls in the leap second {year}-{month:02d}-{day:02d} "
+            f"{hour:02d}:{minute:02d}:{seconds:.6f} UTC"
+        )
+    return datetime(year, month, day, hour, minute, tzinfo=UTC) + timedelta(seconds=seconds)
+
+
+def _after_ut1_data(table: Ut1Table, what: str) -> DateOutsideUt1Data:
+    return DateOutsideUt1Data(
+        f"{what} is after {table.last_day}, the packaged IERS UT1 table's last day; name "
+        "another time scale"
+    )
+
+
+def _iers_delta_t_s(time: AstronomicalTime) -> float | None:
+    """`time`'s delta-T when it came from IERS; None when it is Swiss Ephemeris's own."""
+    return time.delta_t_s if time.ut1_basis is Ut1Basis.IERS_C04 else None
+
+
+def _iers_delta_t_at_ut1(jd_ut1: float) -> float | None:
+    """IERS's delta-T at a UT1 Julian date; None before 1972, where the model applies."""
+    table = _packaged_ut1()
+    if jd_ut1 < table.first_ut1:
+        return None
+    jd_tt = table.tt_from_ut1(jd_ut1)
+    if jd_tt > table.tt[-1]:
+        raise _after_ut1_data(table, f"JD {jd_ut1} UT1")
+    return table.delta_t_at_tt(jd_tt)
+
+
+@contextlib.contextmanager
+def _swiss_ephemeris_delta_t(delta_t_s: float | None) -> Iterator[None]:
+    """Swiss Ephemeris converts UT to TT with its own delta-T model, a process-wide setting.
+    Given another delta-T, it uses that within the block and its model again after, whatever
+    happens inside."""
+    if delta_t_s is None:
+        yield
+        return
+    swe.set_delta_t_userdef(delta_t_s / 86400)
+    try:
+        yield
+    finally:
+        swe.set_delta_t_userdef(swe.DELTAT_AUTOMATIC)
 
 
 def _one_flag[T](flags: int, table: dict[int, T]) -> T:

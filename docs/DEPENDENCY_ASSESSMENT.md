@@ -1,6 +1,6 @@
 # Dependency assessment
 
-This assessment covers Swiss Ephemeris, its two Python bindings (pysweph and pyswisseph), Immanuel, Morinus Special Edition, Valens, Astrolog and Planetdance. It was carried out between 2026-10-31 and 2026-11-06.
+This assessment covers Swiss Ephemeris, its two Python bindings (pysweph and pyswisseph), Immanuel, Morinus Special Edition, Valens, Astrolog and Planetdance. It was carried out between 2026-10-31 and 2026-11-06. Section 9, IERS's UT1 data, was added on 2026-11-09 for the default time scale.
 
 **How it was done:**
 - Sources were fetched at the commits named below and **read, never built or run**.
@@ -25,6 +25,7 @@ This assessment covers Swiss Ephemeris, its two Python bindings (pysweph and pys
 | Valens | "1.0" (`c1476af`) | Contradictory (MIT vs GPL-3.0+) | **Reference** for definitions; reject as dependency or oracle |
 | Astrolog | 8.00 (`5bf172e`, `ast80src.zip`) | GPL-2.0+; bundled Swiss Ephemeris AGPL/Professional | **Reference** executable, possible after a build and a test battery; not for eclipses |
 | Planetdance | site changelog to 2026-10-21 | Closed freeware | **Reject** |
+| IERS EOP 20 C04 (data) | `eopc04.1962-now`, Last-Modified 2026-11-09 | None found (unverified) | **Adopt**, packaged and pinned by hash |
 
 ## What each project offers for the Phase 1 requirements
 
@@ -63,7 +64,7 @@ This assessment covers Swiss Ephemeris, its two Python bindings (pysweph and pys
 | Relevant features | **Provided directly** (manual §6–8, `swecl.c`, `sweph.c`) (read, observed):<br>• positions in ecliptic and equatorial coordinates, with speeds;<br>• mean and true node, mean, osculating and interpolated apogee;<br>• Ascendant, MC, ARMC and Vertex (`houses_ex2`);<br>• ΔT and sidereal time;<br>• fixed stars (`fixstar2`);<br>• rise, set and meridian transits (`rise_trans`);<br>• global and local solar eclipse searches, lunar eclipse searches and eclipse attributes (`sol_eclipse_when_glob`, `sol_eclipse_where`/`how`, `lun_eclipse_when`/`how`), forward or backward.<br>**Left to the application:** raw separations and aspect deviations; parallels; octiles; civil time that refuses ambiguous input; nearest-eclipse pairs with positions; the syzygy; NASA's definition of greatest eclipse; listing every event in a window; pairing events for parans; telling circumpolar from never rising. |
 | Relevant files | `sweph.c` (positions), `swehouse.c` (angles), `swecl.c` (eclipses; `swe_rise_trans_true_hor`; `calc_mer_trans`), `swephlib.c:3460-3481` (sidereal-time model switch at 1850 and 2050), `swephexp.h` (flags). |
 | Test coverage | No unit-test suite was audited (unverified). The project validates Swiss Ephemeris independently against JPL Horizons, ERFA and NASA's canon (`CALCULATION_CONVENTIONS.md` §13). |
-| Risks | **Silent fallbacks:**<br>• With missing data files, positions fall back to the Moshier model and only the return flag says so (observed).<br>• Eclipse searches and `rise_trans` fall back with no flag at all (observed).<br>• `SE_EPHE_PATH` overrides the configured path (observed).<br>**Data and caching:**<br>• A data build (2026/04/14) returned Mercury up to 104° wrong without warning (observed).<br>• `fixstar2` keeps the first star catalogue it reads for the whole process (observed).<br>**Accuracy limits:**<br>• `rise_trans`'s first answers are off by up to 2.6 s (stars' transits) and 0.69 s (the Moon's) (observed).<br>• Sidereal time jumps by 97 mas and 1.9″ at its model switches (observed).<br>• The Moon file steps at segment boundaries (observed).<br>• Slow bodies' speeds aren't exactly the rate of change of their positions (observed).<br>**API traps:**<br>• Out-of-range coordinates are accepted (observed).<br>• `BIT_FORCE_SLOW_METHOD == FLG_TOPOCTR` (observed).<br>• `rise_trans` sets the topocentric position process-wide (read).<br>**Licence:** AGPL obligations unless a Professional licence is bought. |
+| Risks | **Silent fallbacks:**<br>• With missing data files, positions fall back to the Moshier model and only the return flag says so (observed).<br>• Eclipse searches and `rise_trans` fall back with no flag at all (observed).<br>• `SE_EPHE_PATH` overrides the configured path (observed).<br>**Data and caching:**<br>• A data build (2026/04/14) returned Mercury up to 104° wrong without warning (observed).<br>• `fixstar2` keeps the first star catalogue it reads for the whole process (observed).<br>**Accuracy limits:**<br>• `rise_trans`'s first answers are off by up to 2.6 s (stars' transits) and 0.69 s (the Moon's) (observed).<br>• Sidereal time jumps by 97 mas and 1.9″ at its model switches (observed).<br>• The Moon file steps at segment boundaries (observed).<br>• Slow bodies' speeds aren't exactly the rate of change of their positions (observed).<br>**API traps:**<br>• Out-of-range coordinates are accepted (observed).<br>• `BIT_FORCE_SLOW_METHOD == FLG_TOPOCTR` (observed).<br>• `rise_trans` sets the topocentric position process-wide (read).<br>**Time:**<br>• The ΔT table is extrapolated after 2023.0 (`swephlib.c:2426-2496`) (read) and 0.40 s off IERS by 2026-10 (observed).<br>• Functions that take UT apply that ΔT internally; `set_delta_t_userdef` overrides it process-wide (observed).<br>• From 2034, `utc_to_jd` stops applying leap seconds and takes the reading as UT1 (observed).<br>**Licence:** AGPL obligations unless a Professional licence is bought. |
 | Reuse | **Adopt**, through one adapter that checks every result (see `CALCULATION_CONVENTIONS.md` §3). |
 
 ## 2. pysweph
@@ -177,6 +178,17 @@ This assessment covers Swiss Ephemeris, its two Python bindings (pysweph and pys
 | macOS, headless | Windows installers only; the changelog mentions fixes "on wine / linux / mac" (read), so no native macOS build (inferred). No documented command-line mode; it has an in-app scripting language, AstroBasic (read). |
 | Relevant features | Built on Swiss Ephemeris 2.10.03 since 2022-08-28 (changelog) (read). |
 | Reuse | **Reject.** It's Windows-only with no command line, and its calculations add nothing over Swiss Ephemeris itself. The brief rules out Windows virtualisation. |
+
+## 9. IERS EOP 20 C04 (data)
+
+| Field | Assessment |
+|---|---|
+| Project | The IERS Earth Orientation Parameters Product Centre, Paris Observatory. Series and readme at https://hpiers.obspm.fr/iers/eop/eopc04/. |
+| Version | `eopc04.1962-now`, Last-Modified 2026-11-09 14:21:06 GMT, SHA-256 `5e98a6a8…60fb90`, daily from 1962-01-01 to 2026-10-10 (read). The readme names the series C04 2020, version 4, started 2026-02-05 (read). |
+| Licence | No licence or terms of use in the file or its readme (read); not checked further (unverified). |
+| Use | UT1 − UTC for `TimeScale.UT1_FROM_IERS`, 1972-01-01 to 2026-10-10, copied into `src/astro_research/iers_eop20c04_ut1.txt` (`CALCULATION_CONVENTIONS.md` §2.2). |
+| Risks | • The series ends about a month before its release date, and the final combination stops 30 days before it (readme) (read).<br>• Past values change between versions: the readme lists four versions of the 2020 series (read).<br>• A new table changes every calculation key, since its hash is part of the provenance (observed). |
+| Reuse | **Adopt**: packaged, pinned by size and SHA-256, and checked when the ephemeris is opened. |
 
 ## What was not done
 

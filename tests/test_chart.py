@@ -72,6 +72,7 @@ PROVENANCE = EphemerisProvenance(
     de_number=441,
     source_commit="c" * 40,
     file_sha256=(("sepl_18.se1", "a" * 64), ("semo_18.se1", "b" * 64)),
+    ut1_data_sha256="f" * 64,
 )
 
 
@@ -144,13 +145,12 @@ def test_a_reading_at_its_resolution_is_accepted(time: CivilTime, resolution: st
 # --- Chart settings -------------------------------------------------------------------------
 
 
-def test_time_scale_and_aspect_angles_must_be_named() -> None:
-    # The engine chooses neither: the time-scale default is undecided, and aspect angles are
-    # the researcher's choice.
-    with pytest.raises(TypeError):
-        ChartSettings(aspect_angles=MAJOR)  # type: ignore[call-arg]
+def test_aspect_angles_must_be_named_and_the_time_scale_defaults_to_iers() -> None:
+    # Aspect angles are the researcher's choice. The time scale defaults to UT1 from IERS's
+    # measured data, decided after Phase 1.
     with pytest.raises(TypeError):
         ChartSettings(time_scale=TimeScale.CLOCK_AS_UT1)  # type: ignore[call-arg]
+    assert ChartSettings(aspect_angles=MAJOR).time_scale is TimeScale.UT1_FROM_IERS
 
 
 def test_the_time_scale_must_be_a_time_scale() -> None:
@@ -299,6 +299,7 @@ def test_the_inputs_spell_out_the_record_settings_and_ephemeris() -> None:
         "de_number": 441,
         "source_commit": "c" * 40,
         "file_sha256": [["sepl_18.se1", "a" * 64], ["semo_18.se1", "b" * 64]],
+        "ut1_data_sha256": "f" * 64,
     }
 
 
@@ -383,6 +384,7 @@ def _single_changes() -> list[tuple[BirthRecord, ChartSettings, EphemerisProvena
         replace(PROVENANCE, de_number=431),
         replace(PROVENANCE, source_commit="d" * 40),
         replace(PROVENANCE, file_sha256=(("sepl_18.se1", "a" * 64), ("semo_18.se1", "e" * 64))),
+        replace(PROVENANCE, ut1_data_sha256="e" * 64),
     ]
     return (
         [(RECORD, SETTINGS, PROVENANCE)]
@@ -395,7 +397,7 @@ def _single_changes() -> list[tuple[BirthRecord, ChartSettings, EphemerisProvena
 def test_any_single_change_gives_a_new_key() -> None:
     variants = _single_changes()
     keys = [calculation_key(*variant) for variant in variants]
-    assert len(set(keys)) == len(keys) == 23
+    assert len(set(keys)) == len(keys) == 24
 
 
 def test_a_microsecond_changes_the_key() -> None:

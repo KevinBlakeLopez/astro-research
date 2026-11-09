@@ -28,7 +28,7 @@ import numpy as np
 import pytest
 from reference_lunar import GM_EARTH_KM3_S2, GM_MOON_KM3_S2, mean_apogee, mean_node, osculating
 
-from astro_research.astronomical_time import AstronomicalTime, TimeScale
+from astro_research.astronomical_time import AstronomicalTime, TimeScale, Ut1Basis
 from astro_research.civil_time import UtcTime, resolve
 from astro_research.ephemeris import Ephemeris, load_manifest
 from astro_research.geo import GeoPosition
@@ -72,6 +72,7 @@ def at_tt(jd_tt: float) -> AstronomicalTime:
         jd_tt=jd_tt,
         delta_t_s=0.0,
         ut1_minus_utc_s=0.0,
+        ut1_basis=Ut1Basis.CLOCK_READING,
     )
 
 

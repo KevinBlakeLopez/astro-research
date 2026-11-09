@@ -242,13 +242,14 @@ def _syzygy(eph: Ephemeris, kind: EclipseKind, start_jd_tt: float) -> float:
 def _eclipse(
     eph: Ephemeris, candidate: EclipseCandidate, greatest_jd_tt: float, time_scale: TimeScale
 ) -> Eclipse:
-    attributes = eph.eclipse_attributes(candidate.kind, greatest_jd_tt)
+    greatest = _instant(eph, greatest_jd_tt, time_scale)
+    attributes = eph.eclipse_attributes(candidate.kind, greatest.time)
     syzygy_jd_tt = _syzygy(eph, candidate.kind, greatest_jd_tt)
     return Eclipse(
         kind=candidate.kind,
         type=candidate.type,
         central=candidate.central,
-        greatest=_instant(eph, greatest_jd_tt, time_scale),
+        greatest=greatest,
         syzygy=_instant(eph, syzygy_jd_tt, time_scale),
         magnitude=attributes.magnitude,
         penumbral_magnitude=attributes.penumbral_magnitude,

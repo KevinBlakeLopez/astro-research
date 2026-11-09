@@ -2,7 +2,7 @@
 
 A headless Python engine for exploratory astrology research. It computes astronomical positions and raw measurements on Swiss Ephemeris, validated against independent references, and fails closed when an input or its environment can't be trusted.
 
-This is Phase 1, a calculation engine only. There's no web application, database or GUI.
+It's a calculation engine only: there's no web application, database or GUI.
 
 ## What it computes
 
@@ -15,7 +15,7 @@ This is Phase 1, a calculation engine only. There's no web application, database
 - **The nearest solar and lunar eclipses** before and after a birth.
 - **A proof of concept for fixed-star parans:** angular events and the gaps between them.
 
-Civil times come in four forms: UTC, a local time with an IANA zone, a local time with a stated offset, or local mean time. Ambiguous or nonexistent local times are refused, never guessed. How UTC becomes UT1 (`--time-scale`) and which aspect angles count are always yours to name.
+Civil times come in four forms: UTC, a local time with an IANA zone, a local time with a stated offset, or local mean time. Ambiguous or nonexistent local times are refused, never guessed. Which aspect angles count is always yours to name. UT1 comes by default from IERS's measured values, up to 2026-10-10; after that, name another time scale (`--time-scale`).
 
 ## Documents
 
@@ -48,6 +48,8 @@ uv run python scripts/fetch_ephemeris.py
 - **What else it verifies:** the whole environment, the same check the engine runs whenever it opens the data folder.
 - **Not committed:** the files aren't in the repository, and a missing or altered file stops the engine and the tests.
 
+The IERS UT1 table isn't fetched: it ships in the package as `src/astro_research/iers_eop20c04_ut1.txt`, pinned in the same manifest. `scripts/derive_ut1_data.py` rebuilds it from a new download of IERS's series, which changes every calculation key.
+
 ## Tests and checks
 
 ```bash
@@ -73,13 +75,13 @@ The tests run offline. Their reference values are committed in `tests/fixtures/`
 **One chart:** the input, the resolved time with the calculation key, positions, angles and every pair measurement.
 
 ```bash
-uv run python scripts/chart.py --local 1987-06-15T04:25 --zone Europe/London --lat 51.5074 --lon -0.1278 --time-scale clock-as-ut1 --aspects major,octile
+uv run python scripts/chart.py --local 1987-06-15T04:25 --zone Europe/London --lat 51.5074 --lon -0.1278 --aspects major,octile
 ```
 
 **A two-chart comparison**, B minus A (here, twins born a minute apart): the time differences, every point's change, and each contact with the Ascendant, MC or Vertex.
 
 ```bash
-uv run python scripts/compare.py --a-local 1987-06-15T04:25 --a-zone Europe/London --a-lat 51.5074 --a-lon -0.1278 --b-local 1987-06-15T04:26 --b-zone Europe/London --b-lat 51.5074 --b-lon -0.1278 --time-scale clock-as-ut1 --aspects major,octile
+uv run python scripts/compare.py --a-local 1987-06-15T04:25 --a-zone Europe/London --a-lat 51.5074 --a-lon -0.1278 --b-local 1987-06-15T04:26 --b-zone Europe/London --b-lat 51.5074 --b-lon -0.1278 --aspects major,octile
 ```
 
 **Options** (both scripts):
@@ -90,7 +92,7 @@ uv run python scripts/compare.py --a-local 1987-06-15T04:25 --a-zone Europe/Lond
 | `--local` | A wall-clock reading, with exactly one of `--zone`, `--offset` or `--local-mean-time`. |
 | `--offset=-05:00` | The stated UTC offset. Negative offsets need the `=`, or they're read as options. |
 | `--stated-offset` | Settles a local time that happened twice. |
-| `--time-scale` | `clock-as-ut1` or `ut1-from-delta-t`. Required. |
+| `--time-scale` | `ut1-from-iers` (the default), `ut1-from-delta-t` or `clock-as-ut1`. |
 | `--aspects` | Angles in degrees and/or the sets `major` and `octile`. Required. |
 
 Records the engine refuses are reported as an error, with exit status 2. Run either script with `--help` for every option. The output is plain text for reading; the engine itself returns structured Python objects.
@@ -101,7 +103,6 @@ From Python, the same chart:
 from datetime import datetime
 from pathlib import Path
 
-from astro_research.astronomical_time import TimeScale
 from astro_research.chart import BirthRecord, ChartSettings, compute_chart
 from astro_research.civil_time import ZonedLocalTime
 from astro_research.ephemeris import Ephemeris
@@ -113,9 +114,7 @@ record = BirthRecord(
     time=ZonedLocalTime(local=datetime(1987, 6, 15, 4, 25), zone="Europe/London"),
     place=GeoPosition(latitude=51.5074, longitude=-0.1278),
 )
-settings = ChartSettings(
-    time_scale=TimeScale.CLOCK_AS_UT1, aspect_angles=tuple(sorted({*MAJOR, *OCTILE}))
-)
+settings = ChartSettings(aspect_angles=tuple(sorted({*MAJOR, *OCTILE})))
 chart = compute_chart(eph, record, settings)
 ```
 
@@ -124,5 +123,7 @@ chart = compute_chart(eph, record, settings)
 **Swiss Ephemeris is dual-licensed: AGPL or the paid Swiss Ephemeris Professional License.** That covers the C library inside the pysweph binding and the data files fetched above. Using it under the AGPL places obligations on the whole project once software is distributed or a public service is run. See [docs/DEPENDENCY_ASSESSMENT.md](docs/DEPENDENCY_ASSESSMENT.md).
 
 **This project is licensed under the GNU Affero General Public License, version 3 or later** ([LICENSE](LICENSE)), matching Swiss Ephemeris's AGPL option.
+
+UT1 − UTC in `src/astro_research/iers_eop20c04_ut1.txt` is from the IERS EOP 20 C04 series of the IERS Earth Orientation Parameters Product Centre at Paris Observatory.
 
 NASA's eclipse predictions in `tests/fixtures/` carry NASA's requested acknowledgments: "Eclipse Predictions by Fred Espenak (NASA's GSFC)" for solar eclipses, and "Eclipse Predictions by Fred Espenak and Jean Meeus (NASA's GSFC)" for lunar ones.

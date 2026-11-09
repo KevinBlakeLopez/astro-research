@@ -4,8 +4,8 @@ A `BirthRecord` is what a source says about one birth: a civil time, a place, an
 how precisely the time was recorded and the uncertainty the source states. It holds no names or
 identifiers: subjects, sources and datasets are separate concepts.
 
-`ChartSettings` names every choice the engine does not make itself: the time scale (the default
-is undecided) and the aspect angles (a research choice). `compute_chart()` runs the engine on a
+`ChartSettings` names the choices: the aspect angles (a research choice, always named), the time
+scale (by default IERS's measured UT1) and the points. `compute_chart()` runs the engine on a
 record: time, positions, angles, chart points and pair measurements.
 
 The calculation key is the SHA-256 of `calculation_inputs()`, a canonical JSON of the whole
@@ -100,8 +100,8 @@ class BirthRecord:
 
 @dataclass(frozen=True, kw_only=True)
 class ChartSettings:
-    time_scale: TimeScale
     aspect_angles: tuple[float, ...]  # stored as floats, in the order given
+    time_scale: TimeScale = TimeScale.UT1_FROM_IERS
     points: tuple[Point, ...] = ALL_POINTS  # the Ascendant, MC and Vertex are always added
 
     def __post_init__(self) -> None:

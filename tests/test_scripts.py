@@ -9,7 +9,6 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from astro_research.astronomical_time import TimeScale
 from astro_research.chart import BirthRecord, ChartSettings, calculation_key
 from astro_research.civil_time import ZonedLocalTime
 from astro_research.ephemeris import Ephemeris
@@ -23,7 +22,6 @@ CHART = [
     "--zone", "Europe/London",
     "--lat", "51.5074",
     "--lon", "-0.1278",
-    "--time-scale", "clock-as-ut1",
     "--aspects", "major,octile",
 ]  # fmt: skip
 COMPARE = [
@@ -32,7 +30,6 @@ COMPARE = [
     "--a-lat", "51.5074", "--a-lon", "-0.1278",
     "--b-local", "1987-06-15T04:26", "--b-zone", "Europe/London",
     "--b-lat", "51.5074", "--b-lon", "-0.1278",
-    "--time-scale", "clock-as-ut1",
     "--aspects", "major,octile",
 ]  # fmt: skip
 
@@ -56,9 +53,7 @@ def test_the_chart_script_prints_the_engine_s_chart(fetched_ephe: Path) -> None:
         time=ZonedLocalTime(local=datetime(1987, 6, 15, 4, 25), zone="Europe/London"),
         place=GeoPosition(latitude=51.5074, longitude=-0.1278),
     )
-    settings = ChartSettings(
-        time_scale=TimeScale.CLOCK_AS_UT1, aspect_angles=tuple(sorted({*MAJOR, *OCTILE}))
-    )
+    settings = ChartSettings(aspect_angles=tuple(sorted({*MAJOR, *OCTILE})))
     key = calculation_key(record, settings, Ephemeris.open(fetched_ephe).provenance)
     assert f"calculation key  {key}" in result.stdout
 
@@ -82,11 +77,18 @@ def test_a_refused_record_is_an_error_not_a_guess() -> None:
     assert "AmbiguousLocalTime" in result.stderr
 
 
-def test_the_time_scale_and_aspects_must_be_named() -> None:
-    for option in ("--time-scale", "--aspects"):
-        arguments = [*CHART]
-        i = arguments.index(option)
-        del arguments[i : i + 2]
-        result = run(arguments)
-        assert result.returncode == 2
-        assert option in result.stderr
+def test_the_aspects_must_be_named_and_the_time_scale_defaults_to_iers() -> None:
+    arguments = [*CHART]
+    i = arguments.index("--aspects")
+    del arguments[i : i + 2]
+    result = run(arguments)
+    assert result.returncode == 2
+    assert "--aspects" in result.stderr
+    result = run(CHART)
+    assert result.returncode == 0, result.stderr
+    assert "time scale       ut1_from_iers" in result.stdout
+    assert "ut1 basis        iers_c04" in result.stdout
+    result = run([*CHART, "--time-scale", "clock-as-ut1"])
+    assert result.returncode == 0, result.stderr
+    assert "time scale       clock_as_ut1" in result.stdout
+    assert "ut1 basis        clock_reading" in result.stdout

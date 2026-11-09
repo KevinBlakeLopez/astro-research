@@ -204,20 +204,30 @@ def _collect(
     found: list[AngularEvent],
     missing: list[tuple[Body | FixedStar, HorizonEvent]],
 ) -> None:
+    # Nothing at or after the end is converted to a time: under UT1_FROM_IERS a search can run on
+    # past the table's last day, where there is no UT1.
     search_from = start.jd_ut1
-    while True:
-        first = eph.rise_trans(point, event, search_from, place, horizon)
+    while search_from < end.jd_ut1:
+        first = eph.rise_trans(point, event, search_from, place, horizon, start.time_scale)
         if first is None:
             if (point, event) not in missing:
                 missing.append((point, event))
             # No rising or setting this cycle; carry on after the next upper transit.
-            transit = eph.rise_trans(point, HorizonEvent.UPPER_TRANSIT, search_from, place, horizon)
+            transit = eph.rise_trans(
+                point, HorizonEvent.UPPER_TRANSIT, search_from, place, horizon, start.time_scale
+            )
             if transit is None or transit >= end.jd_ut1:
                 return
             search_from = transit + _NEXT_SEARCH_DAYS
             continue
-        refined = eph.rise_trans(point, event, first - _REFINE_LEAD_DAYS, place, horizon)
+        if first - _REFINE_LEAD_DAYS >= end.jd_ut1:
+            return  # the refined search starts there, so its event is past the end too
+        refined = eph.rise_trans(
+            point, event, first - _REFINE_LEAD_DAYS, place, horizon, start.time_scale
+        )
         jd_ut1 = first if refined is None else refined
+        if jd_ut1 >= end.jd_ut1:
+            return
         time = eph.time_from_ut1(jd_ut1, start.time_scale)
         if time.jd_tt >= end.jd_tt:
             return

@@ -1,18 +1,19 @@
 # Calculation conventions
 
-This document defines every convention the Phase 1 engine (`astro_research`, version 0.1.0) uses. For each one it says what is computed, which alternative is not used, and where the choice is recorded.
+This document defines every convention the engine (`astro_research`, version 0.1.0) uses. For each one it says what is computed, which alternative is not used, and where the choice is recorded.
 
 **How choices are recorded.** Each module records its conventions as a versioned string, for example `positions-v2: …`; [the appendix](#appendix-convention-strings) quotes them all. Those strings travel with every result, and they're part of every chart's calculation key. A change in convention therefore changes both the string and the key.
 
 **Choices the engine doesn't make.** The engine never picks a research choice on the caller's behalf. Wherever the alternatives are equally defensible, the caller must name one, with no default:
-- the time scale;
 - the aspect angles;
 - time offsets for a sensitivity sweep;
 - eclipse types;
 - the horizon convention for rise and set;
 - the paran window.
 
-Numbers are as measured during Phase 1. Some are bounds the test suite enforces; the others are one-off measurements, described in `PHASE1_REPORT.md`.
+The time scale does have a default: UT1 is a measured quantity, so the default takes IERS's measurements (§2.2). The other scales stay available by name.
+
+Numbers are as measured during Phase 1, or during Phase 2 for the IERS time scale. Some are bounds the test suite enforces; the others are one-off measurements, described in `PHASE1_REPORT.md`.
 
 ## 1. Summary
 
@@ -27,7 +28,7 @@ Numbers are as measured during Phase 1. Some are bounds the test suite enforces;
 | House systems | **None.** Only the angles are computed: Ascendant, MC, Descendant, IC and Vertex, plus the ARMC. | House cusps of any system. |
 | Ephemeris and flags | Swiss Ephemeris with the pinned DE441 files (`FLG_SWIEPH`), plus `FLG_SPEED` and, for right ascension and declination, `FLG_EQUATORIAL`. Every return flag is checked. | Moshier, JPL files, `FLG_TOPOCTR` for positions, `FLG_SIDEREAL`, `FLG_TRUEPOS`/`NOABERR`/`NOGDEFL`/`NONUT` in results. |
 | Julian dates | Gregorian calendar only. UT1 Julian dates for the Earth's rotation, TT Julian dates for positions. | Julian-calendar input; dates before 1582-10-15. |
-| ΔT | TT = UT1 + Swiss Ephemeris's ΔT for the loaded DE441 files: `deltat_ex(jd_ut1, FLG_SWIEPH)`. | The ΔT that `utc_to_jd` applies internally (DE431-based; 0.30 s different at 1800, 0.04 s at 1900). |
+| ΔT | **Default scale, from 1972:** TT exactly from UTC through leap seconds, and ΔT from IERS's measured UT1 − UTC. **Otherwise** (the other scales, and before 1972): TT = UT1 + Swiss Ephemeris's ΔT for the loaded DE441 files, `deltat_ex(jd_ut1, FLG_SWIEPH)`. | The ΔT that `utc_to_jd` applies internally (DE431-based; 0.30 s different at 1800, 0.04 s at 1900). Swiss Ephemeris's ΔT model under the default scale (extrapolated after 2023). |
 | Units | Angles in degrees, distances in AU, speeds per day, times in seconds or Julian days. Longitudes are east-positive and elevations in metres. | — |
 | Numerical precision | Swiss Ephemeris's doubles, unrounded. Julian dates resolve to about 40 µs, and UTC readings to the microsecond. | Rounding of any measurement. |
 
@@ -60,20 +61,29 @@ Ambiguity is detected by resolving both folds and checking the round trip. Diffe
 
 ### 2.2 Time scales (`astronomical_time.py`, `TimeScale`)
 
-How a UTC reading becomes UT1 is a convention. The caller must name one in every chart: there's no default yet. Phase 2 will add a third scale that takes UT1 − UTC from a pinned IERS data file, and make that the default.
+How a UTC reading becomes UT1 is a convention. The default is `UT1_FROM_IERS`. The other two scales are kept for comparison, and for instants after the IERS table's last day.
 
 | `TimeScale` | UT1 | Used by |
 |---|---|---|
-| `CLOCK_AS_UT1` | The UTC clock reading itself (`julday`). | Immanuel does this (observed); other software was not checked. |
+| `UT1_FROM_IERS` (default) | UTC to TT exactly through leap seconds, then UT1 = TT − ΔT, with ΔT from IERS's measured UT1 − UTC. | — |
 | `UT1_FROM_DELTA_T` | Swiss Ephemeris's `utc_to_jd`: UTC to TT through leap seconds, then UT1 = TT − ΔT(model). | — |
+| `CLOCK_AS_UT1` | The UTC clock reading itself (`julday`). | Immanuel does this (observed); other software was not checked. |
 
-The two scales compare as follows:
-- **Before 1972** they give identical results, because Swiss Ephemeris treats earlier civil time as UT.
-- **After 1972** they differ by UT1 − UTC (at most 0.9 s). That moves the Ascendant by up to about 30″, roughly a third of a one-second birth-time difference.
-- **Under either scale**, TT = UT1 + `deltat_ex(UT1, FLG_SWIEPH)`, so positions are always consistent with the loaded DE441 files. Each `AstronomicalTime` records `jd_ut1`, `jd_tt`, `delta_t_s`, `ut1_minus_utc_s` and its time scale.
+The scales compare as follows:
+- **Before 1972** all three give identical results, because civil time was then based on UT, and each takes the reading as UT.
+- **After 1972** they differ by up to UT1 − UTC (at most 0.9 s). That moves the Ascendant by up to about 30″, roughly a third of a one-second birth-time difference.
+- **Under the two model scales**, TT = UT1 + `deltat_ex(UT1, FLG_SWIEPH)`, so positions are always consistent with the loaded DE441 files. Under `UT1_FROM_IERS`, TT is exact and positions are computed at that TT.
+- **What's recorded.** Each `AstronomicalTime` records `jd_ut1`, `jd_tt`, `delta_t_s`, `ut1_minus_utc_s`, its time scale and `ut1_basis`: where its UT1 came from (`IERS_C04`, `CIVIL_TIME_AS_UT`, `DELTA_T_MODEL` or `CLOCK_READING`).
 - **Within a pair of charts** the choice almost cancels: it changes a one-minute Ascendant change by 0.025″ (1987). The exception is a pair that straddles a leap second. Under `CLOCK_AS_UT1` that second is lost in both TT and the angles: 60 s instead of 61, and the Ascendant's change 10.6″ smaller (2016-12-31).
 
-**Accuracy against measured UT1.** Measured against IERS's EOP 20 C04 series, daily from 1972-01-01 to 2026-10-10:
+**`UT1_FROM_IERS` in detail:**
+- **Data.** UT1 − UTC at 0h UTC for every day from 1972-01-01 to 2026-10-10, copied digit for digit from IERS's EOP 20 C04 series (`eopc04.1962-now`, Last-Modified 2026-11-09). It's `src/astro_research/iers_eop20c04_ut1.txt`, which ships in the package and is pinned by size and SHA-256 in the manifest. `scripts/derive_ut1_data.py` derives it from a download.
+- **Interpolation.** Each day's value becomes ΔT = 32.184 s + (TAI − UTC) − (UT1 − UTC) at that day's 0h UTC, and ΔT is interpolated linearly in TT. ΔT has no leap-second steps, so this runs smoothly across a leap second, where UT1 − UTC jumps by a whole second. Interpolating linearly in UT1 − TAI over two days instead of one misses the skipped day's value by at most 0.97 ms (measured, 1972–2026), so the one-day interpolation the engine uses is expected to do better (not measured).
+- **Coverage.** Before 1972 the reading is taken as UT, as under the other scales; IERS's 1962–1971 values are against the older UTC. From 1972-01-01 to the last day's 0h UTC, UT1 comes from the table. After that the scale refuses with `DateOutsideUt1Data`, a `DateOutsideEphemeris`, and another scale must be named. At 1972-01-01 the scale steps from the civil reading to IERS's UT1, which then differed from it by 0.045 s.
+- **Provenance.** The table's hash is part of the ephemeris provenance. A new table therefore changes every calculation key, including keys for dates whose values didn't change. IERS's series ends about a month before its release date, and past values have been revised between releases (its readme lists four versions of the 2020 series).
+- **Swiss Ephemeris's own ΔT.** Swiss Ephemeris functions that take UT convert it to TT with their ΔT model. On this scale the model is 0.11–0.14 s off on 2024 dates and 0.34 s off on 2026-08-12 (measured). Left in place, it would move rise, set and transit events by up to 0.014 s (the Moon's, and Mercury's at Oulu) and the place of greatest eclipse by up to 0.0029° (measured). So `rise_trans`, `sol_eclipse_where` and `lun_eclipse_how` are given IERS's ΔT for each call (`set_delta_t_userdef`). The setting is process-wide, and the model is restored after each call, even when it fails; the test suite checks that after every test. The angles (`houses_ex2`) aren't given it: a 0.34 s change of ΔT moves them by under 0.001 mas (measured).
+
+**Accuracy of the model scales against measured UT1.** Measured against IERS's EOP 20 C04 series, daily from 1972-01-01 to 2026-10-10:
 
 | Births | `UT1_FROM_DELTA_T` error | `CLOCK_AS_UT1` error |
 |---|---|---|
@@ -83,9 +93,12 @@ The two scales compare as follows:
 
 Swiss Ephemeris 2.10.03's ΔT table holds measured values up to 2023.0 and extrapolated ones for 2024–2028 (`swephlib.c:2426-2496`), and the Earth's rotation didn't follow the extrapolation. One second of time moves the Ascendant by about 33″ at London.
 
+**`UT1_FROM_DELTA_T` after 2033.** From 2034, Swiss Ephemeris's `utc_to_jd` no longer applies leap seconds: its model's UT1 − UTC passes −1 s, so it assumes leap seconds are missing and takes the reading as UT1 (observed). UT1 − UTC is then 0, but `ut1_basis` still records `DELTA_T_MODEL`.
+
 `Ephemeris.time_from_tt` and `time_from_ut1` turn an event's Julian date back into an `AstronomicalTime`, by way of its UTC reading under the caller's time scale.
 - The reading is rounded to the microsecond.
-- Under `UT1_FROM_DELTA_T`, an instant inside a leap second has no reading and is refused (`InstantInLeapSecond`).
+- Under `UT1_FROM_DELTA_T` and `UT1_FROM_IERS`, the reading is TT's own UTC. An instant inside a leap second has no reading and is refused (`InstantInLeapSecond`).
+- Under `UT1_FROM_IERS`, an instant after the table's last day is refused (`DateOutsideUt1Data`).
 
 ### 2.3 Julian dates and resolution
 
@@ -104,16 +117,18 @@ Swiss Ephemeris 2.10.03's ΔT table holds measured values up to 2023.0 and extra
 
 - **Pinned by hash, not name.** The earlier 2026/04/14 build returns Mercury up to 104° wrong in early 1800, up to 1800-03-21 (sampled daily from 1800-01-05), with no warning.
 - **Dates outside the files are refused** with `DateOutsideEphemeris`. Swiss Ephemeris would otherwise switch silently to its Moshier model, and that applies to positions, eclipses and rise/set alike.
+- **The IERS UT1 table** (§2.2) is pinned in the same manifest. It ships in the package instead of being fetched.
 
 **Binding.** pysweph 2.10.3.6, which bundles Swiss Ephemeris 2.10.03. pyswisseph must never be installed alongside it: the two install the same `swisseph` module and silently overwrite each other. The project's dependency constraints (`pyswisseph<0` in `pyproject.toml`) exclude it.
 
 **The engine fails closed.** `Ephemeris.open()` runs `verify_ephemeris()`, and nothing calculates without the handle it returns. The check confirms:
 1. the `swisseph` module is the pinned pysweph build, byte for byte against its install record;
 2. the data folder holds exactly the manifest's files, with matching sizes and hashes (dotfiles are ignored);
-3. Swiss Ephemeris really loaded those files: the return flag says so, each loaded file lies in the folder, and the DE number matches;
-4. the star catalogue Swiss Ephemeris holds in memory is the pinned one.
+3. the packaged IERS UT1 table matches its size and hash, holds every day of its range, and Swiss Ephemeris has a whole leap-second count for each of those days;
+4. Swiss Ephemeris really loaded the data files: the return flag says so, each loaded file lies in the folder, and the DE number matches;
+5. the star catalogue Swiss Ephemeris holds in memory is the pinned one.
 
-Point 4 is needed because Swiss Ephemeris keeps the first catalogue it reads for the rest of the process; neither changing the path nor `close` reloads it. The check compares Regulus's barycentric ICRS position at J2000 (with light-time, aberration, deflection and nutation off) with the pinned file's record. It catches a different catalogue only if that catalogue's Regulus differs.
+Point 5 is needed because Swiss Ephemeris keeps the first catalogue it reads for the rest of the process; neither changing the path nor `close` reloads it. The check compares Regulus's barycentric ICRS position at J2000 (with light-time, aberration, deflection and nutation off) with the pinned file's record. It catches a different catalogue only if that catalogue's Regulus differs.
 
 After the check:
 - a handle refuses to calculate once the process-wide data path has moved (`StaleEphemeris`), or while `SE_EPHE_PATH` is set, because that overrides the path;
@@ -195,7 +210,7 @@ Only continuous numbers. There are no orbs, aspect flags, applying or separating
 
 It holds no names or identifiers: subjects, sources and datasets are separate concepts. A clock reading finer than its stated resolution is refused, not rounded, and a stated uncertainty must be positive.
 
-**`ChartSettings`** must name the time scale and the aspect angles. Points default to all ten bodies and four lunar points.
+**`ChartSettings`** must name the aspect angles. The time scale defaults to `UT1_FROM_IERS`, and points default to all ten bodies and four lunar points.
 
 **The calculation key** is the SHA-256 of `calculation_inputs()`: canonical JSON (sorted keys, no whitespace, `chart-key-v1`) of:
 - the whole record, the settings and the ephemeris provenance;
@@ -247,7 +262,8 @@ How it behaves:
 - **An eclipse's degree and declination** (project convention, for rules built on the engine) are those at the syzygy: the Sun's for a solar eclipse, the Moon's for a lunar one. Greatest eclipse remains the eclipse's instant.
 - **Before and after** are strict, in TT, and decided by the refined instant.
 - **Which types count** is the caller's choice. `SOLAR_TYPES` and `LUNAR_TYPES` are named sets of every type of each kind.
-- **Refusals.** Eclipses outside the data files are refused.
+- **Under `UT1_FROM_IERS`**, the attributes (magnitudes and the place of greatest eclipse) are Swiss Ephemeris's at the instant's own UT1 and TT (§2.2).
+- **Refusals.** Eclipses outside the data files are refused. Under `UT1_FROM_IERS`, so is an eclipse after the UT1 table's last day (`DateOutsideUt1Data`), because it has no UT1 on that scale. For a birth up to about six months before that day, the next eclipse may fall after it, and another scale must be named.
 
 ## 12. Parans, proof of concept (`parans.py`)
 
@@ -266,7 +282,8 @@ How it behaves:
   Refined events agree with ERFA within 7.3 ms, close to the 7 ms resolution of Swiss Ephemeris's bisection.
 - **Bodies Swiss Ephemeris says don't rise or set** are listed in `no_rise_or_set`. It can't tell circumpolar from never rising, and the result doesn't either. Their transits are kept, and a body that rises again later in the window is still followed.
 - **Stars** are named by catalogue designation (e.g. `,alLeo`), because names repeat in the catalogue.
-- **Refusals.** Windows outside the data files and the poles are refused.
+- **Under `UT1_FROM_IERS`**, each search is given IERS's ΔT at its start (§2.2). ΔT changes by under 5 ms a day (since 1972, measured), and a refining search starts 3 minutes before its event.
+- **Refusals.** Windows outside the data files and the poles are refused. Searches run past the window's end, but nothing at or after the end is turned into a time, so a window may end on the UT1 table's last day.
 
 ## 13. Numerical precision and validation
 
@@ -283,6 +300,7 @@ Results are Swiss Ephemeris's doubles, never rounded. Tolerances in the tests ar
 | Eclipses | NASA Five Millennium Canon, 909 eclipses 1901–2100 | identity, type and saros exact; times and magnitudes within the largest observed differences (labelled as measured) |
 | Star rise, set and transits | ERFA `atco13`, refraction off | 0.01 s |
 | Body rise, set and transits | ERFA's horizon transform of Swiss Ephemeris's topocentric positions, refraction off | 0.01 s |
+| UT1 under `UT1_FROM_IERS` | IERS's published daily values, copied into the tests | Julian-date rounding (about 160 µs) |
 
 A residual above its budget is a finding to investigate, never a reason to widen the tolerance.
 

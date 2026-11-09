@@ -39,6 +39,7 @@ from astro_research.eclipses import (
 )
 from astro_research.ephemeris import (
     DateOutsideEphemeris,
+    DateOutsideUt1Data,
     Ephemeris,
     StaleEphemeris,
     load_manifest,
@@ -390,23 +391,47 @@ def test_eclipses_outside_the_files_are_refused(eph: Ephemeris) -> None:
 
 def test_eclipse_instants_do_not_depend_on_the_time_scale(eph: Ephemeris) -> None:
     utc = datetime(1987, 6, 15, 3, 25, tzinfo=UTC)
-    clock, modelled = (
+    scales = (TimeScale.CLOCK_AS_UT1, TimeScale.UT1_FROM_DELTA_T, TimeScale.UT1_FROM_IERS)
+    clock, modelled, iers = (
         next_eclipse(eph, utc_time(eph, utc, scale), EclipseKind.SOLAR, SOLAR_TYPES).greatest.time
-        for scale in (TimeScale.CLOCK_AS_UT1, TimeScale.UT1_FROM_DELTA_T)
+        for scale in scales
     )
     rounding_s = same_instant(clock.jd_tt) / SECOND
-    assert clock.jd_tt == pytest.approx(modelled.jd_tt, abs=same_instant(clock.jd_tt))
-    assert (clock.time_scale, modelled.time_scale) == (
-        TimeScale.CLOCK_AS_UT1,
-        TimeScale.UT1_FROM_DELTA_T,
-    )
-    # Only the UTC reading differs: by UT1 - UTC, which the clock convention takes as zero.
+    assert (clock.time_scale, modelled.time_scale, iers.time_scale) == scales
+    for time in (modelled, iers):
+        assert time.jd_tt == pytest.approx(clock.jd_tt, abs=same_instant(clock.jd_tt))
+    # Against the clock convention, only the UTC reading differs: by UT1 - UTC, taken as zero.
     gap_s = (clock.instant.utc - modelled.instant.utc).total_seconds()
     assert gap_s == pytest.approx(modelled.ut1_minus_utc_s, abs=rounding_s)
+    # The model and IERS both read TT's own UTC; only their UT1 differs.
+    assert abs((iers.instant.utc - modelled.instant.utc).total_seconds()) <= rounding_s
+    ut1_gap_s = (modelled.jd_ut1 - iers.jd_ut1) * 86400
+    assert ut1_gap_s == pytest.approx(
+        modelled.ut1_minus_utc_s - iers.ut1_minus_utc_s, abs=rounding_s
+    )
+    assert abs(ut1_gap_s) > 0.001  # on 1987-09-23 the model is 29 ms off IERS (measured)
 
 
-@pytest.mark.parametrize("scale", list(TimeScale))
-@pytest.mark.parametrize("jd_tt", [2396910.0, 2446961.6423, 2460409.2620, 2597450.5])
+def test_under_iers_an_eclipse_past_its_last_day_is_refused(eph: Ephemeris) -> None:
+    # From 2026-09-01 the next solar eclipse, 2027-02-06, is past IERS's last value (2026-10-10):
+    # it has no UT1 on this scale, so another must be named. The one before still has.
+    birth = utc_time(eph, datetime(2026, 9, 1, tzinfo=UTC), TimeScale.UT1_FROM_IERS)
+    with pytest.raises(DateOutsideUt1Data, match="2026-10-10"):
+        nearest_eclipses(eph, birth, solar_types=SOLAR_TYPES, lunar_types=LUNAR_TYPES)
+    before = previous_eclipse(eph, birth, EclipseKind.SOLAR, SOLAR_TYPES)
+    assert before.greatest.time.time_scale is TimeScale.UT1_FROM_IERS
+
+
+@pytest.mark.parametrize(
+    ("scale", "jd_tt"),
+    [
+        (scale, jd_tt)
+        for scale in TimeScale
+        for jd_tt in (2396910.0, 2446961.6423, 2460409.2620, 2597450.5)
+        # IERS has no UT1 for 2400; test_ut1_iers.py covers that refusal.
+        if not (scale is TimeScale.UT1_FROM_IERS and jd_tt == 2597450.5)
+    ],
+)
 def test_a_tt_julian_date_becomes_a_utc_reading(
     eph: Ephemeris, scale: TimeScale, jd_tt: float
 ) -> None:
@@ -458,6 +483,49 @@ def test_solar_attributes_are_swiss_ephemeris_at_greatest_eclipse(
         assert eclipse.place_of_greatest.latitude == pytest.approx(where[1], abs=1e-5), row["date"]
         assert eclipse.place_of_greatest.longitude == pytest.approx(where[0], abs=1e-5), row["date"]
         assert eclipse.magnitude == pytest.approx(attr[8], abs=1e-9), row["date"]
+
+
+def _sol_eclipse_where_at(time: AstronomicalTime) -> tuple[list[float], list[float]]:
+    """Swiss Ephemeris's place and attributes at this instant's own UT1 and TT: its delta-T set
+    to their difference for the one call."""
+    swisseph.set_delta_t_userdef(time.jd_tt - time.jd_ut1)
+    try:
+        _, where, attr = swisseph.sol_eclipse_where(time.jd_ut1, swisseph.FLG_SWIEPH)
+    finally:
+        swisseph.set_delta_t_userdef(swisseph.DELTAT_AUTOMATIC)
+    return where, attr
+
+
+@pytest.mark.parametrize(
+    "birth",
+    [
+        datetime(1987, 6, 15, 3, 25, tzinfo=UTC),
+        datetime(2024, 3, 20, tzinfo=UTC),
+        datetime(2026, 6, 1, tzinfo=UTC),
+    ],
+    ids=["1987", "2024", "2026"],
+)
+def test_under_iers_solar_attributes_use_the_instant_s_own_ut1_and_tt(
+    eph: Ephemeris, birth: datetime
+) -> None:
+    # Swiss Ephemeris takes UT and applies its own delta-T model, 0.34 s off IERS by 2026-08-12.
+    # Left in place, that moves the place of greatest eclipse by up to 0.0011 degrees (latitude
+    # or longitude) on 2024-04-08 and 0.0029 on 2026-08-12, and the magnitude by 3.6e-8
+    # (measured).
+    nearest = nearest_eclipses(
+        eph,
+        utc_time(eph, birth, TimeScale.UT1_FROM_IERS),
+        solar_types=SOLAR_TYPES,
+        lunar_types=LUNAR_TYPES,
+    )
+    for eclipse in (nearest.solar_before, nearest.solar_after):
+        time = eclipse.greatest.time
+        assert time.time_scale is TimeScale.UT1_FROM_IERS
+        where, attr = _sol_eclipse_where_at(time)
+        assert eclipse.place_of_greatest is not None
+        assert eclipse.place_of_greatest.latitude == pytest.approx(where[1], abs=1e-5)
+        assert eclipse.place_of_greatest.longitude == pytest.approx(where[0], abs=1e-5)
+        assert eclipse.magnitude == pytest.approx(attr[8], abs=1e-9)
 
 
 def test_the_result_records_its_inputs_and_conventions(eph: Ephemeris) -> None:

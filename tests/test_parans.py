@@ -85,14 +85,19 @@ def eph(fetched_ephe: Path) -> Ephemeris:
     return Ephemeris.open(fetched_ephe)
 
 
-def utc_time(eph: Ephemeris, utc: datetime) -> AstronomicalTime:
-    return eph.time(resolve(UtcTime(utc=utc), PLACES["london"]), TimeScale.CLOCK_AS_UT1)
+def utc_time(
+    eph: Ephemeris, utc: datetime, scale: TimeScale = TimeScale.CLOCK_AS_UT1
+) -> AstronomicalTime:
+    return eph.time(resolve(UtcTime(utc=utc), PLACES["london"]), scale)
 
 
 def day(
-    eph: Ephemeris, start: datetime, hours: float = 24.0
+    eph: Ephemeris,
+    start: datetime,
+    hours: float = 24.0,
+    scale: TimeScale = TimeScale.CLOCK_AS_UT1,
 ) -> tuple[AstronomicalTime, AstronomicalTime]:
-    return utc_time(eph, start), utc_time(eph, start + timedelta(hours=hours))
+    return utc_time(eph, start, scale), utc_time(eph, start + timedelta(hours=hours), scale)
 
 
 def of(events: AngularEvents, point: Body | FixedStar, event: HorizonEvent) -> list[AngularEvent]:
@@ -214,11 +219,10 @@ def _catalogue(fetched_ephe: Path) -> dict[str, dict[str, float]]:
 
 
 def _erfa_observed(
-    star: dict[str, float], jd_ut1: float, place: GeoPosition
+    star: dict[str, float], jd_ut1: float, jd_tt: float, place: GeoPosition
 ) -> tuple[float, float]:
-    """Observed zenith distance and hour angle (degrees), no refraction, at Swiss Ephemeris's
-    UT1 and TT for that instant (fed to ERFA through UTC and dut1)."""
-    jd_tt = jd_ut1 + swisseph.deltat_ex(jd_ut1, swisseph.FLG_SWIEPH)[0]
+    """Observed zenith distance and hour angle (degrees), no refraction, at the given UT1 and TT
+    (fed to ERFA through UTC and dut1)."""
     tai1, tai2 = erfa.tttai(jd_tt, 0.0)
     utc1, utc2 = erfa.taiutc(tai1, tai2)
     dut1 = ((jd_ut1 - utc1) - utc2) * 86400
@@ -258,29 +262,45 @@ def _root(f: Callable[[float], float], t0: float) -> float:
 
 
 def _erfa_offset(
-    star: dict[str, float], place: GeoPosition, event: HorizonEvent
+    star: dict[str, float], place: GeoPosition, event: HorizonEvent, tt_minus_ut1: float
 ) -> Callable[[float], float]:
     """A function of UT1 that is zero at the event: zenith distance minus 90 degrees, or the
-    hour angle from 0 or 180 degrees."""
+    hour angle from 0 or 180 degrees. TT is UT1 plus the event's own TT - UT1, which changes by
+    at most 2 us over the 40-second search (IERS's values since 1972, measured)."""
+
+    def observed(jd_ut1: float) -> tuple[float, float]:
+        return _erfa_observed(star, jd_ut1, jd_ut1 + tt_minus_ut1, place)
+
     if event in (HorizonEvent.RISE, HorizonEvent.SET):
-        return lambda jd_ut1: _erfa_observed(star, jd_ut1, place)[0] - 90.0
+        return lambda jd_ut1: observed(jd_ut1)[0] - 90.0
     target = 0.0 if event is HorizonEvent.UPPER_TRANSIT else 180.0
-    return lambda jd_ut1: math.remainder(_erfa_observed(star, jd_ut1, place)[1] - target, 360.0)
+    return lambda jd_ut1: math.remainder(observed(jd_ut1)[1] - target, 360.0)
+
+
+# Swiss Ephemeris's rise_trans takes UT1 and applies its own delta-T model, 0.11-0.14 s off
+# IERS on these 2024 dates (0.34 s by August 2026). Left in place under IERS, it moves the test
+# days' first events by up to 0.014 s (measured), past the tolerance. Each scale is checked
+# against the instant's own TT.
+SCALES = [TimeScale.CLOCK_AS_UT1, TimeScale.UT1_FROM_IERS]
 
 
 @pytest.mark.filterwarnings("ignore::erfa.ErfaWarning")  # "dubious year" past the leap-second table
+@pytest.mark.parametrize("scale", SCALES)
 @pytest.mark.parametrize("place_name", ["london", "mumbai", "sydney", "tromso"])
-def test_star_events_match_erfa(eph: Ephemeris, fetched_ephe: Path, place_name: str) -> None:
+def test_star_events_match_erfa(
+    eph: Ephemeris, fetched_ephe: Path, place_name: str, scale: TimeScale
+) -> None:
     place, catalogue = PLACES[place_name], _catalogue(fetched_ephe)
-    start, end = day(eph, datetime(2024, 7, 1, tzinfo=UTC))
+    start, end = day(eph, datetime(2024, 7, 1, tzinfo=UTC), scale=scale)
     result = angular_events(
         eph, place, start=start, end=end, bodies=(), stars=tuple(STARS.values()), horizon=GEOMETRIC
     )
     assert result.events
     for e in result.events:
         assert isinstance(e.point, FixedStar)
-        t = e.time.jd_ut1
-        ref = _root(_erfa_offset(catalogue[e.point.designation], place, e.event), t)
+        assert e.time.time_scale is scale
+        t, tt_minus_ut1 = e.time.jd_ut1, e.time.jd_tt - e.time.jd_ut1
+        ref = _root(_erfa_offset(catalogue[e.point.designation], place, e.event, tt_minus_ut1), t)
         assert abs(t - ref) * 86400 <= EVENT_TOLERANCE_S, (e.point.designation, e.event)
 
 
@@ -288,12 +308,11 @@ def test_star_events_match_erfa(eph: Ephemeris, fetched_ephe: Path, place_name: 
 
 
 def _topocentric_hour_angle_and_altitude(
-    body: Body, jd_ut1: float, place: GeoPosition
+    body: Body, jd_ut1: float, jd_tt: float, place: GeoPosition
 ) -> tuple[float, float]:
-    """From Swiss Ephemeris's topocentric apparent RA/Dec, through ERFA's sidereal time and
-    horizon transform (degrees)."""
+    """From Swiss Ephemeris's topocentric apparent RA/Dec at the given TT, through ERFA's
+    sidereal time at the given UT1 and horizon transform (degrees)."""
     swisseph.set_topo(place.longitude, place.latitude, place.elevation_m)
-    jd_tt = jd_ut1 + swisseph.deltat_ex(jd_ut1, swisseph.FLG_SWIEPH)[0]
     se_body = {
         Body.SUN: swisseph.SUN,
         Body.MOON: swisseph.MOON,
@@ -308,31 +327,65 @@ def _topocentric_hour_angle_and_altitude(
     return math.degrees(hour_angle), math.degrees(altitude)
 
 
+@pytest.mark.parametrize("scale", SCALES)
 @pytest.mark.parametrize("place_name", ["london", "sydney", "oulu"])
 @pytest.mark.parametrize(
     "start", [datetime(2024, 3, 20, tzinfo=UTC), datetime(2024, 12, 15, tzinfo=UTC)]
 )
 def test_body_events_match_erfas_horizon_transform(
-    eph: Ephemeris, place_name: str, start: datetime
+    eph: Ephemeris, place_name: str, start: datetime, scale: TimeScale
 ) -> None:
     place = PLACES[place_name]
     bodies = (Body.SUN, Body.MOON, Body.MERCURY, Body.MARS, Body.JUPITER)
-    window = day(eph, start)
+    window = day(eph, start, scale=scale)
     result = angular_events(
         eph, place, start=window[0], end=window[1], bodies=bodies, stars=(), horizon=GEOMETRIC
     )
     assert result.events
     for e in result.events:
         assert isinstance(e.point, Body)
-        t, step = e.time.jd_ut1, 30 * SECOND
-        ha, alt = _topocentric_hour_angle_and_altitude(e.point, t, place)
-        ha2, alt2 = _topocentric_hour_angle_and_altitude(e.point, t + step, place)
+        assert e.time.time_scale is scale
+        t, tt, step = e.time.jd_ut1, e.time.jd_tt, 30 * SECOND
+        ha, alt = _topocentric_hour_angle_and_altitude(e.point, t, tt, place)
+        ha2, alt2 = _topocentric_hour_angle_and_altitude(e.point, t + step, tt + step, place)
         if e.event in (HorizonEvent.RISE, HorizonEvent.SET):
             offset_s = alt / ((alt2 - alt) / 30)
         else:
             target = 0.0 if e.event is HorizonEvent.UPPER_TRANSIT else 180.0
             offset_s = math.remainder(ha - target, 360.0) / ((ha2 - ha) / 30)
         assert abs(offset_s) <= EVENT_TOLERANCE_S, (e.point, e.event)
+
+
+def test_under_iers_a_window_may_end_on_its_last_day(eph: Ephemeris) -> None:
+    # Each search runs on past the window's end, beyond 2026-10-10, where IERS has no UT1. Events
+    # there are dropped before they are converted, so they cannot refuse the window.
+    start, end = day(eph, datetime(2026, 10, 9, tzinfo=UTC), scale=TimeScale.UT1_FROM_IERS)
+    result = angular_events(
+        eph,
+        PLACES["london"],
+        start=start,
+        end=end,
+        bodies=(Body.SUN, Body.MOON),
+        stars=(STARS["Regulus"],),
+        horizon=GEOMETRIC,
+    )
+    assert result.events
+    assert all(start.jd_tt <= e.time.jd_tt < end.jd_tt for e in result.events)
+
+
+@pytest.mark.parametrize("longitude", [176.91, 176.53], ids=["30 s before", "60 s after"])
+def test_under_iers_a_transit_at_the_window_s_end_needs_no_ut1_past_it(
+    eph: Ephemeris, longitude: float
+) -> None:
+    # Here the Sun crosses the meridian about 30 s before, or 60 s after, a window that ends on
+    # IERS's last day (found by search). The next search would then start past the end, or a
+    # refined transit land past it.
+    place = GeoPosition(latitude=-17.0, longitude=longitude)
+    start, end = day(eph, datetime(2026, 10, 9, tzinfo=UTC), scale=TimeScale.UT1_FROM_IERS)
+    result = angular_events(
+        eph, place, start=start, end=end, bodies=(Body.SUN,), stars=(), horizon=GEOMETRIC
+    )
+    assert len(of(result, Body.SUN, HorizonEvent.UPPER_TRANSIT)) == 1
 
 
 # --- Horizon conventions --------------------------------------------------------------------

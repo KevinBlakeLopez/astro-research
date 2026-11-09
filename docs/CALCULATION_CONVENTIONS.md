@@ -129,11 +129,13 @@ Taking the reading as UT1 is the clock convention: from 2033-09-17, `CLOCK_AS_UT
 **The engine fails closed.** `Ephemeris.open()` runs `verify_ephemeris()`, and nothing calculates without the handle it returns. The check confirms:
 1. the `swisseph` module is the pinned pysweph build, byte for byte against its install record;
 2. the data folder holds exactly the manifest's files, with matching sizes and hashes (dotfiles are ignored);
-3. the packaged IERS UT1 table matches its size and hash, holds every day of its range, and Swiss Ephemeris has a whole leap-second count for each of those days;
-4. Swiss Ephemeris really loaded the data files: the return flag says so, each loaded file lies in the folder, and the DE number matches;
-5. the star catalogue Swiss Ephemeris holds in memory is the pinned one.
+3. Swiss Ephemeris really loaded the data files: the return flag says so, each loaded file lies in the folder, and the DE number matches;
+4. the star catalogue Swiss Ephemeris holds in memory is the pinned one;
+5. the packaged IERS UT1 table matches its size and hash and holds every day of its range, and the leap seconds Swiss Ephemeris holds are the pinned ones. Its TAI − UTC must step exactly on the days IERS's UT1 − UTC rises by about a second (1972-01-01 to 2026-10-10), and not again before 2033-09-17, where the model scale ends.
 
-Point 5 is needed because Swiss Ephemeris keeps the first catalogue it reads for the rest of the process; neither changing the path nor `close` reloads it. The check compares Regulus's barycentric ICRS position at J2000 (with light-time, aberration, deflection and nutation off) with the pinned file's record. It catches a different catalogue only if that catalogue's Regulus differs.
+Point 4 is needed because Swiss Ephemeris keeps the first catalogue it reads for the rest of the process; neither changing the path nor `close` reloads it. The check compares Regulus's barycentric ICRS position at J2000 (with light-time, aberration, deflection and nutation off) with the pinned file's record. It catches a different catalogue only if that catalogue's Regulus differs.
+
+Point 5 is needed for a similar reason. Swiss Ephemeris reads extra leap seconds from a `seleapsec.txt` in the data path at its first UTC conversion in the process, and keeps them after the path moves (`swedate.c:311-344`; observed). With one read first, TT is a second late under both scales that apply leap seconds, and nothing raises (observed). The engine's first conversions are made once the path points at the verified folder, which can hold no such file, and the check catches one read by an earlier conversion.
 
 After the check:
 - a handle refuses to calculate once the process-wide data path has moved (`StaleEphemeris`), or while `SE_EPHE_PATH` is set, because that overrides the path;

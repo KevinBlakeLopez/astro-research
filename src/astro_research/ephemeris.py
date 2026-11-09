@@ -9,7 +9,8 @@ fails closed (decision D1), so `verify_ephemeris()` confirms, in order:
    returned flag says so, and each loaded file lies inside the folder with the manifest's DE
    number. That catches an SE_EPHE_PATH override, which takes priority over set_ephe_path.
 
-It also checks the packaged IERS UT1 table against the manifest's SHA-256.
+It then checks the packaged IERS UT1 table against the manifest's SHA-256, and the leap seconds
+Swiss Ephemeris holds against that table.
 
 The ephemeris path is process-wide state in Swiss Ephemeris; this module owns it. Calculations
 go through an `Ephemeris` handle, which only `Ephemeris.open()` creates (after the check) and
@@ -232,7 +233,6 @@ def verify_ephemeris(ephe_dir: Path) -> EphemerisProvenance:
     manifest = load_manifest()
     binding = _verify_binding()
     _verify_files(ephe_dir, manifest)
-    _packaged_ut1()
     _verify_loaded(ephe_dir, manifest)
     return EphemerisProvenance(
         binding=binding,
@@ -290,8 +290,10 @@ def verify_ut1_data(source: Traversable) -> Ut1Table:
         raise EphemerisFileError(f"{source.name} lacks days between {first_day} and {last_day}")
     tt: list[float] = []
     delta_t_s: list[float] = []
-    for mjd, ut1_minus_utc in rows:
+    previous: tuple[int, float] | None = None  # the day before's TAI - UTC and UT1 - UTC
+    for mjd, value in rows:
         day = _MJD_EPOCH + timedelta(days=int(mjd))
+        ut1_minus_utc = float(value)
         jd_tt, _ = swe.utc_to_jd(day.year, day.month, day.day, 0, 0, 0.0, swe.GREG_CAL)
         tt_minus_utc = (jd_tt - (int(mjd) + 2400000.5)) * 86400
         tai_minus_utc = round(tt_minus_utc - 32.184)
@@ -299,8 +301,16 @@ def verify_ut1_data(source: Traversable) -> Ut1Table:
         # some are missing (from 2033-09-17, observed), it takes the reading as UT1 instead.
         if abs(tt_minus_utc - 32.184 - tai_minus_utc) > 1e-3:
             raise EphemerisNotLoaded(f"Swiss Ephemeris has no leap-second count for {day}")
+        # A leap second shows in IERS's data as UT1 - UTC rising by about a second overnight;
+        # otherwise it changes by under 5 ms a day (measured). Swiss Ephemeris's count must step
+        # on exactly those days.
+        if previous is not None:
+            leap_second = ut1_minus_utc - previous[1] > 0.5
+            if tai_minus_utc - previous[0] != int(leap_second):
+                raise EphemerisNotLoaded(_leap_seconds_differ(day))
+        previous = (tai_minus_utc, ut1_minus_utc)
         tt.append(jd_tt)
-        delta_t_s.append(32.184 + tai_minus_utc - float(ut1_minus_utc))
+        delta_t_s.append(32.184 + tai_minus_utc - ut1_minus_utc)
     return Ut1Table(
         first_day=first_day, last_day=last_day, tt=tuple(tt), delta_t_s=tuple(delta_t_s)
     )
@@ -379,6 +389,12 @@ def _verify_loaded(ephe_dir: Path, manifest: EphemerisManifest) -> None:
         if de_number != manifest.de_number:
             raise EphemerisNotLoaded(f"{path} is DE{de_number}, not DE{manifest.de_number}")
     _verify_star_catalogue(folder / "sefstars.txt")
+    # Swiss Ephemeris reads extra leap seconds from a seleapsec.txt in the data path at its first
+    # UTC conversion in the process, and keeps them (observed). These are the engine's first
+    # conversions, made once the path points at the verified folder, which can hold no such file.
+    # Both also check the leap seconds Swiss Ephemeris holds, in case something converted earlier.
+    _packaged_ut1()
+    _model_scale_end()
     _active_folder = folder
 
 
@@ -763,14 +779,34 @@ def _model_scale_end() -> date | None:
     """The first day Swiss Ephemeris's utc_to_jd takes a reading as UT1 instead of applying leap
     seconds, or None. It does so once its delta-T model puts UT1 - UTC past -1 s, from then on
     (2033-09-17, observed; checked to 2400). There it returns the day's 0h as UT1 exactly, which
-    the model's own UT1 isn't on any day before (observed)."""
-    day = date(1972, 1, 1)
+    the model's own UT1 isn't on any day before (observed). It can't come before the IERS table
+    ends, whose days all have a whole leap-second count.
+
+    Up to that day, Swiss Ephemeris's TAI - UTC must stay as it was on the table's last day. The
+    pinned binding's own table ends at 2016-12-31, and later leap seconds can only come from a
+    seleapsec.txt (swedate.c:303, 311-344, read). After that day no scale uses its leap seconds."""
+    table = _packaged_ut1()
+    day = table.last_day
+    expected: float | None = None
     while day < _SCAN_END:
-        _, jd_ut1 = swe.utc_to_jd(day.year, day.month, day.day, 0, 0, 0.0, swe.GREG_CAL)
-        if jd_ut1 == swe.julday(day.year, day.month, day.day, 0.0, swe.GREG_CAL):
+        jd_tt, jd_ut1 = swe.utc_to_jd(day.year, day.month, day.day, 0, 0, 0.0, swe.GREG_CAL)
+        midnight = swe.julday(day.year, day.month, day.day, 0.0, swe.GREG_CAL)
+        if jd_ut1 == midnight:
             return day
+        tai_minus_utc = (jd_tt - midnight) * 86400 - 32.184
+        expected = tai_minus_utc if expected is None else expected
+        if abs(tai_minus_utc - expected) > 1e-3:
+            raise EphemerisNotLoaded(_leap_seconds_differ(day))
         day += timedelta(days=1)
     return None
+
+
+def _leap_seconds_differ(day: date) -> str:
+    return (
+        f"Swiss Ephemeris's leap seconds differ from the pinned ones at {day}: it reads a "
+        "seleapsec.txt from the data path at its first UTC conversion in the process and keeps "
+        "it; restart without one in the path that was set then"
+    )
 
 
 def _past_model_scale(end: date | None, what: str) -> DateOutsideLeapSeconds:

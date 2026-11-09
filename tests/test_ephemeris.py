@@ -111,6 +111,75 @@ def test_a_star_catalogue_read_earlier_in_the_process_is_detected(
     assert "star catalogue" in result.stdout
 
 
+# Swiss Ephemeris reads extra leap seconds from a seleapsec.txt in the data path at the first UTC
+# conversion in a process, and keeps them after the path moves (observed). This script, run in a
+# fresh process, points the path at a folder holding one first, as a default path might.
+LEAP_SECOND_PROBE = """
+import sys
+from datetime import UTC, datetime
+from pathlib import Path
+
+import swisseph
+
+from astro_research.astronomical_time import TimeScale
+from astro_research.civil_time import UtcTime, resolve
+from astro_research.ephemeris import Ephemeris, EphemerisNotLoaded
+from astro_research.geo import GeoPosition
+
+swisseph.set_ephe_path(sys.argv[1])
+if sys.argv[3] == "convert-first":
+    swisseph.utc_to_jd(2000, 1, 1, 0, 0, 0.0, swisseph.GREG_CAL)
+try:
+    eph = Ephemeris.open(Path(sys.argv[2]))
+except EphemerisNotLoaded as error:
+    print("refused:", error)
+    raise SystemExit from None
+here = GeoPosition(latitude=0, longitude=0)
+for year in (2021, 2030):
+    instant = resolve(UtcTime(utc=datetime(year, 1, 1, tzinfo=UTC)), here)
+    model = eph.time(instant, TimeScale.UT1_FROM_DELTA_T)
+    clock = eph.time(instant, TimeScale.CLOCK_AS_UT1)
+    print(year, round((model.jd_tt - clock.jd_ut1) * 86400, 3))  # TT - UTC
+"""
+
+
+def _probe_leap_seconds(tmp_path: Path, fetched_ephe: Path, day: str, order: str) -> str:
+    stray = tmp_path / "stray"
+    stray.mkdir()
+    (stray / "seleapsec.txt").write_text(f"{day}\n")  # one leap second that never happened
+    result = subprocess.run(
+        [sys.executable, "-c", LEAP_SECOND_PROBE, str(stray), str(fetched_ephe), order],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    return result.stdout
+
+
+def test_a_leap_second_file_where_the_path_pointed_before_opening_is_never_read(
+    fetched_ephe: Path, tmp_path: Path
+) -> None:
+    # Opening makes the process's first UTC conversion only once the path points at the verified
+    # folder, which can hold no seleapsec.txt. Read first, the file would put TT a second late.
+    out = _probe_leap_seconds(tmp_path, fetched_ephe, "20200630", "open-first")
+    assert out.splitlines() == ["2021 69.184", "2030 69.184"], out
+
+
+@pytest.mark.parametrize(
+    "day", ["20200630", "20281231"], ids=["within IERS's data", "after it, before 2033-09-17"]
+)
+def test_leap_seconds_read_earlier_in_the_process_are_detected(
+    fetched_ephe: Path, tmp_path: Path, day: str
+) -> None:
+    # A conversion made before opening has already read the file. Swiss Ephemeris's TAI - UTC
+    # must step exactly where IERS's UT1 - UTC jumps by a second (1972-01-01 to 2026-10-10), and
+    # not again before the model scale ends; after that no scale uses its leap seconds.
+    out = _probe_leap_seconds(tmp_path, fetched_ephe, day, "convert-first")
+    assert out.startswith("refused:"), out
+    assert "leap second" in out
+
+
 def test_copy_of_the_pinned_files_verifies(ephe_copy: Path) -> None:
     assert verify_ephemeris(ephe_copy).de_number == 441
 

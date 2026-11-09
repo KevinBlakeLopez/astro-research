@@ -22,6 +22,11 @@ dev = [
     "ruff>=0.17.3",
 ]
 
+[tool.uv.workspace]
+# The research platform (Django, PostgreSQL) is a separate distribution that depends on this
+# engine; the engine depends on neither.
+members = ["research-platform"]
+
 [tool.uv]
 # pyswisseph installs the same `swisseph` module as pysweph and silently overwrites it
 # (`pip check` still passes). An unsatisfiable constraint makes any attempt to pull it in
@@ -35,8 +40,13 @@ line-length = 100
 [tool.ruff.lint]
 select = ["E", "W", "F", "I", "B", "UP", "SIM", "RUF"]
 
+[tool.ruff.lint.per-file-ignores]
+# Django declares Meta options and migrations as mutable class attributes.
+"research-platform/src/research_platform/models.py" = ["RUF012"]
+"research-platform/src/research_platform/migrations/*" = ["RUF012"]
+
 [tool.ruff.lint.isort]
-known-first-party = ["astro_research"]
+known-first-party = ["astro_research", "research_platform"]
 
 [tool.mypy]
 strict = true

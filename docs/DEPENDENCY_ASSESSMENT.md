@@ -1,6 +1,6 @@
 # Dependency assessment
 
-This assessment covers Swiss Ephemeris, its two Python bindings (pysweph and pyswisseph), Immanuel, Morinus Special Edition, Valens, Astrolog and Planetdance. It was carried out between 2026-10-31 and 2026-11-06. Section 9, IERS's UT1 data, was added on 2026-11-09 for the default time scale.
+This assessment covers Swiss Ephemeris, its two Python bindings (pysweph and pyswisseph), Immanuel, Morinus Special Edition, Valens, Astrolog and Planetdance. It was carried out between 2026-10-31 and 2026-11-06. Section 9, IERS's UT1 data, was added on 2026-11-09 for the default time scale, and section 10, the research platform's dependencies, the same day.
 
 **How it was done:**
 - Sources were fetched at the commits named below and **read, never built or run**.
@@ -26,6 +26,7 @@ This assessment covers Swiss Ephemeris, its two Python bindings (pysweph and pys
 | Astrolog | 8.00 (`5bf172e`, `ast80src.zip`) | GPL-2.0+; bundled Swiss Ephemeris AGPL/Professional | **Reference** executable, possible after a build and a test battery; not for eclipses |
 | Planetdance | site changelog to 2026-10-21 | Closed freeware | **Reject** |
 | IERS EOP 20 C04 (data) | `eopc04.1962-now`, Last-Modified 2026-11-09 | None found (unverified) | **Adopt**, packaged and pinned by hash |
+| Django, psycopg, PostgreSQL (platform only) | Django 6.1.3, psycopg 3.3.8, `postgres:18.6` | BSD-3-Clause; LGPL-3.0-only; PostgreSQL Licence | **Adopt** for the research platform; the engine depends on none of them |
 
 ## What each project offers for the Phase 1 requirements
 
@@ -189,6 +190,23 @@ This assessment covers Swiss Ephemeris, its two Python bindings (pysweph and pys
 | Use | UT1 − UTC for `TimeScale.UT1_FROM_IERS`, 1972-01-01 to 2026-10-10, copied into `src/astro_research/iers_eop20c04_ut1.txt` (`CALCULATION_CONVENTIONS.md` §2.2). |
 | Risks | • The series ends about a month before its release date, and the final combination stops 30 days before it (readme) (read).<br>• Past values change between versions: the readme lists four versions of the 2020 series (read).<br>• A new table changes every calculation key, since its hash is part of the provenance (observed). |
 | Reuse | **Adopt**: packaged, pinned by size and SHA-256, and checked when the ephemeris is opened. |
+
+## 10. The research platform's dependencies
+
+The platform (`research-platform/`, `docs/RESEARCH_PLATFORM.md`) is a separate distribution; the engine depends on none of these (`tests/test_boundary.py`). Versions, dates and the packages' licences are from PyPI's and Docker Hub's metadata on 2026-11-09 (read). Docker Hub gives no licence: PostgreSQL's is from its own documentation, and the image also holds Debian's packages (unverified).
+
+| Package | Pinned | Released | Licence | Use |
+|---|---|---|---|---|
+| Django | 6.1.3 | 2026-11-03 | BSD-3-Clause | Models, migrations, the `compute_dataset` command |
+| psycopg (with psycopg-binary) | 3.3.8 | 2026-11-04 | LGPL-3.0-only | Django's PostgreSQL driver |
+| PostgreSQL image | `postgres:18.6`, digest `sha256:e3d24f69…df3c42` | 2026-11-06 | PostgreSQL Licence | The tests' and local development's database (`research-platform/compose.yaml`) |
+| django-stubs | 6.1.2 (development) | 2026-10-05 | MIT | Types for mypy's strict check |
+| pytest-django | 4.14.0 (development) | 2026-08-10 | BSD | The platform's tests |
+
+- **Recent releases.** Django's and psycopg's pins were less than a week old when chosen; they are patch releases, which usually carry security fixes.
+- **Licences.** LGPL-3.0 permits use of the library from AGPL-3.0-or-later code (inferred from the licence texts; not legal advice). The others are permissive.
+- **psycopg-binary** bundles its own libpq, as psycopg's documentation describes, so the Homebrew libpq on this machine isn't used (unverified).
+- **Not audited:** none of these was read beyond its metadata and documentation, and the PostgreSQL image's contents weren't inspected.
 
 ## What was not done
 

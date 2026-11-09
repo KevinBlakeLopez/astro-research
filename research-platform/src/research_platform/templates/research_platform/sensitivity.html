@@ -1,0 +1,64 @@
+{% extends "research_platform/base.html" %}
+{% load measurements %}
+{% block title %}Sensitivity: {{ record.subject }}{% endblock %}
+{% block content %}
+<h1>Birth-time sensitivity: {{ record.subject }}, {{ record.reading }}{% if record.zone %} {{ record.zone }}{% endif %}</h1>
+<p><a href="{% url 'record-chart' record.pk %}?{{ query }}">The chart</a> · <a href="{% url 'admin:research_platform_record_change' record.pk %}">Edit the record</a></p>
+
+<form class="settings" method="get">
+  <label>Aspect angles <input name="aspects" value="{{ aspects }}" placeholder="e.g. major,octile or 30,150"></label>
+  <label>Time scale
+    <select name="time_scale">
+      {% for name in time_scales %}<option value="{{ name }}"{% if name == time_scale %} selected{% endif %}>{{ name }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Span ± (s) <input name="span" value="{{ span }}" inputmode="numeric" size="6" placeholder="e.g. 600"></label>
+  <label>Step (s) <input name="step" value="{{ step }}" inputmode="numeric" size="6" placeholder="e.g. 60"></label>
+  <button type="submit">Sweep</button>
+</form>
+<p>Every measurement is recomputed from a whole chart at each offset from the recorded UTC instant, from −span to +span every step. At most 241 offsets and 7200 s either side.</p>
+
+{% if not offsets %}
+<p>Name a span and a step to sweep: no offsets are chosen for you.</p>
+{% elif refusal %}
+{% include "research_platform/refusal.html" %}
+{% else %}
+<p>{{ sweep.offsets|length }} offsets · base chart <code>{{ sweep.base.calculation_key }}</code> ·
+  <a href="{% url 'record-sensitivity-csv' record.pk %}?{{ query }}">Download every row as CSV</a> (full precision)</p>
+{% if sweep.crosses_sidereal_time_switch %}<p class="refusal" data-warning="sidereal-time-switch">This sweep crosses Swiss Ephemeris's switch of sidereal-time model (1850-01-01 and 2050-01-01 UT1), where the angles jump by 97 mas and 1.9″.</p>{% endif %}
+
+<h2>Series</h2>
+<form class="filter" hx-get="{% url 'record-sensitivity-series' record.pk %}" hx-target="#series" hx-trigger="change">
+  <input type="hidden" name="aspects" value="{{ aspects }}">
+  <input type="hidden" name="time_scale" value="{{ time_scale }}">
+  <input type="hidden" name="span" value="{{ span }}">
+  <input type="hidden" name="step" value="{{ step }}">
+  <label>Quantity
+    <select name="quantity"><option value="">any</option>{% for quantity in quantities %}<option value="{{ quantity }}"{% if quantity == filter.quantity %} selected{% endif %}>{{ quantity }}</option>{% endfor %}</select>
+  </label>
+  <label>Involving
+    <select name="involving"><option value="">any point</option>{% for point in sweep.base.points %}<option value="{{ point.point.value }}"{% if point.point.value == filter.involving %} selected{% endif %}>{{ point.point.value }}</option>{% endfor %}</select>
+  </label>
+  {% if settings.aspect_angles %}
+  <label>Aspect
+    <select name="angle"><option value="">any</option>{% for angle in settings.aspect_angles %}<option value="{{ angle|stringformat:'r' }}"{% if angle == filter.angle %} selected{% endif %}>{{ angle|stringformat:"g" }}°</option>{% endfor %}</select>
+  </label>
+  {% endif %}
+  <label>Rotation-driven
+    <select name="rotation">
+      <option value="">either</option>
+      <option value="only"{% if filter.rotation == "only" %} selected{% endif %}>only</option>
+      <option value="none"{% if filter.rotation == "none" %} selected{% endif %}>none</option>
+    </select>
+  </label>
+  <label>Show
+    <select name="limit">
+      <option value="100">the first 100</option>
+      <option value="all"{% if filter.limit is None %} selected{% endif %}>all</option>
+    </select>
+  </label>
+</form>
+<div id="detail"></div>
+<div id="series" class="scroll">{% include "research_platform/sensitivity_series.html" with record_pk=record.pk %}</div>
+{% endif %}
+{% endblock %}

@@ -2,7 +2,7 @@
 
 A headless Python engine for exploratory astrology research. It computes astronomical positions and raw measurements on Swiss Ephemeris, validated against independent references, and fails closed when an input or its environment can't be trusted.
 
-The engine itself has no web application, database or GUI. The research platform in `research-platform/`, a separate Django package, stores subjects, sources, records and datasets in PostgreSQL, runs the engine over them, and has a local web interface: the admin, a chart page for each record, and a comparison of any two records.
+The engine itself has no web application, database or GUI. The research platform in `research-platform/`, a separate Django package, stores subjects, sources, records and datasets in PostgreSQL, runs the engine over them, and has a local web interface: the admin, a chart page and a birth-time sensitivity page for each record, and a comparison of any two records.
 
 ## What it computes
 

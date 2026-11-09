@@ -1,10 +1,11 @@
-"""The platform's pages: the admin, logging in and out, a record's chart, and comparisons."""
+"""The platform's pages: the admin, logging in and out, a record's chart, its sensitivity, and
+comparisons."""
 
 from django.contrib import admin
 from django.contrib.auth import views as auth_views
 from django.urls import path
 
-from research_platform import views
+from research_platform import sensitivity_views, views
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -18,5 +19,25 @@ urlpatterns = [
         "records/<int:a>/compare/<int:b>/pairs/",
         views.record_compare_pairs,
         name="record-compare-pairs",
+    ),
+    path(
+        "records/<int:pk>/sensitivity/",
+        sensitivity_views.record_sensitivity,
+        name="record-sensitivity",
+    ),
+    path(
+        "records/<int:pk>/sensitivity/series/",
+        sensitivity_views.record_sensitivity_series,
+        name="record-sensitivity-series",
+    ),
+    path(
+        "records/<int:pk>/sensitivity/detail/",
+        sensitivity_views.record_sensitivity_detail,
+        name="record-sensitivity-detail",
+    ),
+    path(
+        "records/<int:pk>/sensitivity.csv",
+        sensitivity_views.record_sensitivity_csv,
+        name="record-sensitivity-csv",
     ),
 ]

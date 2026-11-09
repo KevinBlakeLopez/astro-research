@@ -1,0 +1,19 @@
+{% load measurements %}<p>Showing {{ rows|length }} of {{ total }} series, from the widest range of change to the narrowest.</p>
+<table>
+  <thead>
+    <tr><th class="name">Quantity</th><th class="name">Points</th><th>Aspect</th><th class="name">Rotation-driven</th><th>Range (″)</th><th>Rate at the recorded time (°/day)</th><th></th></tr>
+  </thead>
+  <tbody>
+    {% for row in rows %}
+    <tr data-series="{{ row.id }}">
+      <td class="name">{{ row.series.quantity.value }}</td>
+      <td class="name">{% for point in row.series.points %}{% if not forloop.first %} – {% endif %}{{ point.value }}{% endfor %}</td>
+      <td>{% if row.series.aspect_angle is not None %}{{ row.series.aspect_angle|stringformat:"g" }}°{% endif %}</td>
+      <td class="name">{{ row.series.rotation_driven|yesno:"yes,no" }}</td>
+      <td>{{ row.series.range|arcsec }}</td>
+      <td>{{ row.series.base_rate|fixed }}</td>
+      <td><button type="button" hx-get="{% url 'record-sensitivity-detail' record_pk %}?{{ row.detail_query }}" hx-target="#detail">Detail</button></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>

@@ -3,7 +3,8 @@
 {% block title %}Chart: {{ record.subject }}{% endblock %}
 {% block content %}
 <h1>{{ record.subject }}: {{ record.reading }}{% if record.zone %} {{ record.zone }}{% endif %}</h1>
-<p>Source: {{ record.source }} · <a href="{% url 'admin:research_platform_record_change' record.pk %}">Edit the record</a></p>
+<p>Source: {{ record.source }} · <a href="{% url 'admin:research_platform_record_change' record.pk %}">Edit the record</a> ·
+  <a href="{% url 'record-sensitivity' record.pk %}?{{ request.GET.urlencode }}">Birth-time sensitivity</a></p>
 
 <form class="settings" method="get">
   <label>Aspect angles <input name="aspects" value="{{ aspects }}" placeholder="e.g. major,octile or 30,150"></label>

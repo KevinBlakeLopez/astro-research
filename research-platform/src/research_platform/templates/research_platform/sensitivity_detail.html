@@ -1,0 +1,14 @@
+{% load measurements %}<h3>{{ series.quantity.value }}: {% for point in series.points %}{% if not forloop.first %} – {% endif %}{{ point.value }}{% endfor %}{% if series.aspect_angle is not None %}, from {{ series.aspect_angle|stringformat:"g" }}°{% endif %}</h3>
+<p>Range {{ series.range|arcsec }}″; rate at the recorded time {{ series.base_rate|fixed }}°/day (a local slope only){% if series.rotation_driven %}; driven by the Earth's rotation{% endif %}.</p>
+<svg width="{{ plot_width }}" height="{{ plot_height }}" viewBox="0 0 {{ plot_width }} {{ plot_height }}" role="img" aria-label="Change against offset">
+  <rect x="0.5" y="0.5" width="{{ plot_width|add:-1 }}" height="{{ plot_height|add:-1 }}" fill="none" stroke="currentColor" stroke-opacity="0.25"/>
+  <polyline points="{{ plot }}" fill="none" stroke="currentColor" stroke-width="1.5"/>
+</svg>
+<table>
+  <thead><tr><th>Offset (s)</th><th>Value (°)</th><th>Change (″)</th></tr></thead>
+  <tbody>
+    {% for second, value, change in steps %}
+    <tr data-offset="{{ second }}"><td>{{ second }}</td><td>{{ value|fixed }}</td><td>{{ change|arcsec }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>

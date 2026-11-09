@@ -2,7 +2,7 @@
 
 `research-platform/` stores subjects, sources, birth records and datasets in PostgreSQL, and runs the engine over datasets. It's a Django project and a separate distribution, `research-platform`, which depends on the engine. The engine doesn't depend on it: no `astro_research` module imports Django, psycopg or the platform, and the engine's distribution depends on neither (`tests/test_boundary.py`).
 
-Django owns the schema (`research_platform/models.py` and its migrations). The web interface, described below, is the admin for entering data, a chart page for each record, and a comparison of any two records.
+Django owns the schema (`research_platform/models.py` and its migrations). The web interface, described below, is the admin for entering data, a chart page and a birth-time sensitivity page for each record, and a comparison of any two records.
 
 ## What is stored
 
@@ -72,6 +72,20 @@ It runs on this machine only: it answers on 127.0.0.1 and localhost, and every p
 
   **Aspect angles are never defaulted.** With none named, the pairs show separations and declinations, and no deviations.
 - **The pairs table** can be narrowed to one point and sorted by deviation from one aspect angle. HTMX fetches the table again without reloading the page (`/records/<id>/chart/pairs/`).
+- **Birth-time sensitivity** (`/records/<id>/sensitivity/`) runs the engine's sweep on request. It recomputes a whole chart at each offset from the recorded UTC instant, so the values are exact, not estimated from speeds.
+  - **Offsets:** you name a span and a step in seconds (`span=600&step=60` is −10 to +10 minutes every minute), with the aspect angles and time scale as on the chart page. Offsets are never defaulted.
+  - **Caps:** a sweep is at most 241 offsets and 7200 s either side. That's about 0.3 s of computing (extrapolated from 139 ms for 121 offsets, measured). It also stays well inside the hours it takes the Ascendant to move half a circle, past which the sweep's wrapped changes would misread.
+  - **The series** are listed from the widest range of change to the narrowest, the first 100 unless you ask for all. Each shows its range in arcseconds and its rate at the recorded time, which is a local slope only. Nothing marks a series as sensitive: the range is the number.
+  - **Narrowing,** with HTMX: by quantity, point, aspect angle, and whether the Earth's rotation drives it. Series with the Ascendant, MC or Vertex are rotation-driven: local sidereal time fixes all three, so for statistics they're one factor.
+  - **One series' detail** shows its value and change at every offset, with a plot drawn as SVG by the server.
+  - **A warning** appears when a sweep crosses Swiss Ephemeris's switch of sidereal-time model (1850-01-01 and 2050-01-01 UT1). If the engine refuses the record, or any offset's chart (for example past IERS's last day), the page shows the refusal.
+  - **The CSV download** has one row per series per offset, with the columns `offset_s`, `quantity`, `point_a`, `point_b`, `aspect_angle`, `rotation_driven`, `value` and `change`.
+    - `point_b` and `aspect_angle` are empty when a series has none, and `rotation_driven` is `true` or `false`.
+    - Values and changes are in degrees, at full precision (Python's repr, which reads back exactly).
+    - The file is named `<base calculation key>-span<span>-step<step>.csv`. The base chart's JSON document carries the provenance a CSV can't.
+    - Size: 26,418 rows and 2.1 MiB for ±10 minutes every minute with the major aspect angles (measured).
+
+  The chart page and the record's admin page link to it.
 - **Comparing two records** (`/records/<a>/compare/<b>/`): twins, or two sources' records of one subject. Choose two records in the admin's record list and run **Compare the two selected records**; the older record is A, and the page can swap them.
   - **Both charts use the settings in the address,** as the engine's `compare()` requires, and every number is B minus A.
   - **It shows** both UTC readings, the civil and elapsed seconds between them, and the ARMC change. Then each point's longitude in A and B, with its changes. Then each pair's separation in A and B, its change, and A's and B's deviation from each named aspect angle.
@@ -113,6 +127,12 @@ cd research-platform && RESEARCH_DEBUG=1 uv run python manage.py runserver 127.0
 11. Choose **an angle (Ascendant, MC, Vertex)** under **Involving**, then **by size of change**. Expect 45 pairs, all with an angle, and the largest changes first, without the page reloading.
 12. Follow **Swap A and B**. Expect `-60.000000` civil seconds, and the aspect angles kept in the address.
 13. In the admin, tick just one record and choose **Compare the two selected records**. Expect the message "Choose exactly two records to compare."
+14. On the first record's chart page, follow **Birth-time sensitivity**. Expect a request for a span and a step, and no series.
+15. Enter `600` and `60` and press **Sweep**. Expect 21 offsets and a list of the first 100 series, widest range first, led by pairs with the Ascendant.
+16. Choose **none** under **Rotation-driven**. Expect the list to change without the page reloading, and no series with the Ascendant, MC or Vertex.
+17. Press **Detail** on any series. Expect a line plot and a table of 21 offsets from −600 to 600.
+18. Follow **Download every row as CSV**. Expect a file named `<calculation key>-span600-step60.csv` of about 2 MB that opens in a spreadsheet or pandas.
+19. Enter a span of `7200` and a step of `50` and press **Sweep**. Expect Django's 400 error page with the message "a sweep is at most 241 offsets". It shows the message because `RESEARCH_DEBUG=1`; without it, the page says only "Bad Request (400)".
 
 ## Tests
 

@@ -42,7 +42,7 @@ class RecordAdmin(admin.ModelAdmin[Record]):
     list_display = ("subject", "reading", "time_kind", "zone", "source")
     list_filter = ("time_kind", "time_resolution")
     search_fields = ("subject__label", "reading", "zone")
-    readonly_fields = ("chart",)
+    readonly_fields = ("chart", "sensitivity")
     actions = ("compare_records",)
 
     @admin.display(description="Chart")
@@ -50,6 +50,13 @@ class RecordAdmin(admin.ModelAdmin[Record]):
         if record.pk is None:
             return "Save the record to see its chart."
         return format_html('<a href="{}">Chart</a>', reverse("record-chart", args=[record.pk]))
+
+    @admin.display(description="Birth-time sensitivity")
+    def sensitivity(self, record: Record) -> SafeString | str:
+        if record.pk is None:
+            return "Save the record to sweep its birth time."
+        url = reverse("record-sensitivity", args=[record.pk])
+        return format_html('<a href="{}">Birth-time sensitivity</a>', url)
 
     @admin.action(description="Compare the two selected records")
     def compare_records(

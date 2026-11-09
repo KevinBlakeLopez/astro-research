@@ -1,0 +1,6 @@
+{% for item in refused %}
+<div class="refusal">
+  <p><strong>The engine refused the record of {{ item.record.subject }} ({{ item.record.reading }}): <code>{{ item.refusal.name }}</code></strong></p>
+  <p>{{ item.refusal.message }}</p>
+</div>
+{% endfor %}

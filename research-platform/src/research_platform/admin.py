@@ -2,13 +2,14 @@
 
 Runs, outcomes and stored charts are what the engine produced, so they can be looked at but not
 added, changed or deleted here. A record is validated by the engine when it's saved (`Record.
-clean()`), and its page links to its chart.
+clean()`), and its page links to its chart. Two records chosen in the list open their comparison.
 """
 
 from typing import Any
 
-from django.contrib import admin
-from django.http import HttpRequest
+from django.contrib import admin, messages
+from django.db.models import QuerySet
+from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.urls import reverse
 from django.utils.html import format_html
 from django.utils.safestring import SafeString
@@ -42,12 +43,26 @@ class RecordAdmin(admin.ModelAdmin[Record]):
     list_filter = ("time_kind", "time_resolution")
     search_fields = ("subject__label", "reading", "zone")
     readonly_fields = ("chart",)
+    actions = ("compare_records",)
 
     @admin.display(description="Chart")
     def chart(self, record: Record) -> SafeString | str:
         if record.pk is None:
             return "Save the record to see its chart."
         return format_html('<a href="{}">Chart</a>', reverse("record-chart", args=[record.pk]))
+
+    @admin.action(description="Compare the two selected records")
+    def compare_records(
+        self, request: HttpRequest, queryset: QuerySet[Record]
+    ) -> HttpResponse | None:
+        """Opens B minus A, with the older record (the lower id) as A."""
+        records = list(queryset.order_by("pk"))
+        if len(records) != 2:
+            self.message_user(
+                request, "Choose exactly two records to compare.", level=messages.ERROR
+            )
+            return None
+        return HttpResponseRedirect(reverse("record-compare", args=[r.pk for r in records]))
 
 
 @admin.register(Dataset)

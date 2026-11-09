@@ -1,0 +1,74 @@
+{% extends "research_platform/base.html" %}
+{% load measurements %}
+{% block title %}Comparison: {{ a.subject }} and {{ b.subject }}{% endblock %}
+{% block content %}
+<h1>{{ b.subject }} minus {{ a.subject }}</h1>
+<p>A: <a href="{% url 'record-chart' a.pk %}?{{ query }}">{{ a.subject }}, {{ a.reading }}{% if a.zone %} {{ a.zone }}{% endif %}</a>
+  (<a href="{% url 'record-chart-json' a.pk %}?{{ query }}">JSON</a>) ·
+  B: <a href="{% url 'record-chart' b.pk %}?{{ query }}">{{ b.subject }}, {{ b.reading }}{% if b.zone %} {{ b.zone }}{% endif %}</a>
+  (<a href="{% url 'record-chart-json' b.pk %}?{{ query }}">JSON</a>) ·
+  <a href="{% url 'record-compare' b.pk a.pk %}?{{ query }}">Swap A and B</a></p>
+
+<form class="settings" method="get">
+  <label>Aspect angles <input name="aspects" value="{{ aspects }}" placeholder="e.g. major,octile or 30,150"></label>
+  <label>Time scale
+    <select name="time_scale">
+      {% for name in time_scales %}<option value="{{ name }}"{% if name == time_scale %} selected{% endif %}>{{ name }}</option>{% endfor %}
+    </select>
+  </label>
+  <button type="submit">Show</button>
+</form>
+{% if not settings.aspect_angles %}<p>No aspect angles are named, so no deviations are shown. Name some to see them.</p>{% endif %}
+
+{% if refused %}
+{% include "research_platform/refused_records.html" %}
+{% else %}
+<p>Every change is B minus A, a continuous number: no orb is applied, so nothing says a contact appeared or disappeared.</p>
+
+<h2>Time</h2>
+<table>
+  <tr><th class="name">A, UTC</th><td class="name">{{ comparison.a.time.instant.utc.isoformat }}</td></tr>
+  <tr><th class="name">B, UTC</th><td class="name">{{ comparison.b.time.instant.utc.isoformat }}</td></tr>
+  <tr><th class="name">Civil seconds (no leap seconds)</th><td>{{ comparison.utc_seconds|fixed }}</td></tr>
+  <tr><th class="name">Elapsed seconds (TT)</th><td>{{ comparison.tt_seconds|fixed }}</td></tr>
+  <tr><th class="name">ARMC change (″)</th><td>{{ comparison.armc|arcsec }}</td></tr>
+</table>
+
+<h2>Points (longitudes in degrees; changes in arcseconds)</h2>
+<div class="scroll"><table>
+  <thead><tr><th class="name">Point</th><th>A longitude</th><th>B longitude</th><th>Longitude change</th><th>Latitude change</th><th>Declination change</th></tr></thead>
+  <tbody>
+  {% for change in comparison.points %}
+  <tr data-point="{{ change.point.value }}"><td class="name">{{ change.point.value }}</td><td>{{ change.a.longitude|fixed }}</td><td>{{ change.b.longitude|fixed }}</td><td>{{ change.longitude|arcsec }}</td><td>{{ change.latitude|arcsec }}</td><td>{{ change.declination|arcsec }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+
+<h2>Pairs (degrees; changes in arcseconds)</h2>
+<p>A deviation changes by exactly the pair's change in separation, whatever the angle, so the change is shown once.</p>
+<form class="filter" hx-get="{% url 'record-compare-pairs' a.pk b.pk %}" hx-target="#pairs" hx-trigger="change">
+  <input type="hidden" name="aspects" value="{{ aspects }}">
+  <input type="hidden" name="time_scale" value="{{ time_scale }}">
+  <label>Involving
+    <select name="involving">
+      <option value="">any point</option>
+      <option value="angles"{% if filter.involving == "angles" %} selected{% endif %}>an angle (Ascendant, MC, Vertex)</option>
+      {% for change in comparison.points %}<option value="{{ change.point.value }}"{% if change.point.value == filter.involving %} selected{% endif %}>{{ change.point.value }}</option>{% endfor %}
+    </select>
+  </label>
+  <label>Sort
+    <select name="sort">
+      <option value="pair">by pair</option>
+      <option value="change"{% if filter.sort == "change" %} selected{% endif %}>by size of change</option>
+      {% if settings.aspect_angles %}<option value="deviation"{% if filter.sort == "deviation" %} selected{% endif %}>by the closer deviation from</option>{% endif %}
+    </select>
+  </label>
+  {% if settings.aspect_angles %}
+  <select name="angle" aria-label="Aspect angle">
+    {% for angle in settings.aspect_angles %}<option value="{{ angle|stringformat:'r' }}"{% if angle == filter.angle %} selected{% endif %}>{{ angle|stringformat:"g" }}°</option>{% endfor %}
+  </select>
+  {% endif %}
+</form>
+<div id="pairs" class="scroll">{% include "research_platform/compare_pairs.html" %}</div>
+{% endif %}
+{% endblock %}

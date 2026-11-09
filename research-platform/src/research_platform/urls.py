@@ -1,4 +1,4 @@
-"""The platform's pages: the admin, logging in and out, and a record's chart."""
+"""The platform's pages: the admin, logging in and out, a record's chart, and comparisons."""
 
 from django.contrib import admin
 from django.contrib.auth import views as auth_views
@@ -13,4 +13,10 @@ urlpatterns = [
     path("records/<int:pk>/chart/", views.record_chart, name="record-chart"),
     path("records/<int:pk>/chart/pairs/", views.record_chart_pairs, name="record-chart-pairs"),
     path("records/<int:pk>/chart.json", views.record_chart_json, name="record-chart-json"),
+    path("records/<int:a>/compare/<int:b>/", views.record_compare, name="record-compare"),
+    path(
+        "records/<int:a>/compare/<int:b>/pairs/",
+        views.record_compare_pairs,
+        name="record-compare-pairs",
+    ),
 ]

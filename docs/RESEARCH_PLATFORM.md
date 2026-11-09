@@ -2,7 +2,7 @@
 
 `research-platform/` stores subjects, sources, birth records and datasets in PostgreSQL, and runs the engine over datasets. It's a Django project and a separate distribution, `research-platform`, which depends on the engine. The engine doesn't depend on it: no `astro_research` module imports Django, psycopg or the platform, and the engine's distribution depends on neither (`tests/test_boundary.py`).
 
-Django owns the schema (`research_platform/models.py` and its migrations). The web interface, described below, is the admin for entering data plus a chart page for each record.
+Django owns the schema (`research_platform/models.py` and its migrations). The web interface, described below, is the admin for entering data, a chart page for each record, and a comparison of any two records.
 
 ## What is stored
 
@@ -72,6 +72,13 @@ It runs on this machine only: it answers on 127.0.0.1 and localhost, and every p
 
   **Aspect angles are never defaulted.** With none named, the pairs show separations and declinations, and no deviations.
 - **The pairs table** can be narrowed to one point and sorted by deviation from one aspect angle. HTMX fetches the table again without reloading the page (`/records/<id>/chart/pairs/`).
+- **Comparing two records** (`/records/<a>/compare/<b>/`): twins, or two sources' records of one subject. Choose two records in the admin's record list and run **Compare the two selected records**; the older record is A, and the page can swap them.
+  - **Both charts use the settings in the address,** as the engine's `compare()` requires, and every number is B minus A.
+  - **It shows** both UTC readings, the civil and elapsed seconds between them, and the ARMC change. Then each point's longitude in A and B, with its changes. Then each pair's separation in A and B, its change, and A's and B's deviation from each named aspect angle.
+  - **Units:** longitudes and deviations are in degrees to six decimals, and changes in arcseconds to three decimals (1 mas). A deviation changes by exactly the separation's change, whatever the angle, so that change is shown once.
+  - **Changes are continuous numbers.** No orb is applied, so nothing says a contact appeared or disappeared.
+  - **The pairs** can be narrowed to those involving an angle (the Ascendant, MC and Vertex, which turn together) or one point. They can be sorted by the size of their change, or by the closer of A's and B's deviations from one aspect angle, which finds contacts that are near-exact in either chart.
+  - **Each record's chart and JSON document** are a link away, with the same settings. If the engine refuses either record, the page shows that record's refusal instead of a comparison.
 - **Refusals.** Settings the engine can't use, or a filter the chart can't apply, are refused with a 400. A record the engine refuses shows the refusal (class and message) where the chart would be, and its download returns 422.
 - **HTMX** 2.0.11 is served from the platform's static files, never from another site. It was taken from the npm package, after the package matched the registry's SHA-512, and its SHA-256 is pinned in the tests.
 - **The session-signing key** comes from `RESEARCH_SECRET_KEY`. Otherwise it's made on first use in `research-platform/.secret_key`, which only you can read and git ignores.
@@ -101,6 +108,11 @@ cd research-platform && RESEARCH_DEBUG=1 uv run python manage.py runserver 127.0
 6. Follow **Download the JSON document**. Expect a file named after the calculation key shown on the page.
 7. Add a second record at `1987-10-25T01:30:00`, `Europe/London`, and open its chart. Expect `AmbiguousLocalTime` and the engine's message instead of the tables.
 8. Switch the system to dark mode. Expect the pages to follow it.
+9. Add a second subject with a record a minute after the first: reading `1987-06-15T04:26:00`, the same zone and place. In the admin's record list, tick that record and the first, choose **Compare the two selected records**, and press **Go**. Expect a page titled "B minus A" with the time, points and pairs tables, and `60.000000` civil seconds.
+10. Enter `major` as the aspect angles and press **Show**. Expect A and B columns for each angle.
+11. Choose **an angle (Ascendant, MC, Vertex)** under **Involving**, then **by size of change**. Expect 45 pairs, all with an angle, and the largest changes first, without the page reloading.
+12. Follow **Swap A and B**. Expect `-60.000000` civil seconds, and the aspect angles kept in the address.
+13. In the admin, tick just one record and choose **Compare the two selected records**. Expect the message "Choose exactly two records to compare."
 
 ## Tests
 

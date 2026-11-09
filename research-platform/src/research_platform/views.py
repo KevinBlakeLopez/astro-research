@@ -1,9 +1,11 @@
-"""A record's chart: the page, its pairs fragment, and its JSON document.
+"""A record's chart (page, pairs fragment, JSON document) and two records' comparison.
 
-Each computes the chart on request (about 0.5 ms) under the settings in the address, `aspects`
-and `time_scale`, so an address reproduces what it shows. With no aspect angles named, the chart
-has none: pairs show their separations and declinations, but no deviations. Settings the engine
-can't use are a 400; a record the engine refuses shows the refusal instead of a chart.
+Each computes its charts on request (about 0.5 ms each) under the settings in the address,
+`aspects` and `time_scale`, so an address reproduces what it shows. With no aspect angles named,
+a chart has none: pairs show their separations and declinations, but no deviations. Settings the
+engine can't use are a 400; a record the engine refuses shows the refusal instead of a chart.
+
+A comparison is B minus A for every number (`compare()`), both charts under the same settings.
 """
 
 import functools
@@ -16,6 +18,7 @@ from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, render
 
 from astro_research.chart import Chart, ChartSettings, compute_chart
+from astro_research.comparison import ChartComparison, PairChange, compare
 from astro_research.ephemeris import Ephemeris
 from astro_research.measurements import PairMeasurement
 from astro_research.result_format import chart_to_json
@@ -29,6 +32,8 @@ from research_platform.models import Record
 from research_platform.runner import REFUSALS
 
 SORTS = ("pair", "deviation")
+COMPARISON_SORTS = ("pair", "change", "deviation")
+ANGLES = "angles"  # `involving=angles`: the pairs with the Ascendant, MC or Vertex
 
 
 @dataclass(frozen=True)
@@ -42,6 +47,19 @@ class PairFilter:
     point: str  # a point's name, or "" for every pair
     angle: float | None  # the aspect angle whose deviation sorts the pairs
     sort: str
+
+
+@dataclass(frozen=True)
+class ComparisonFilter:
+    involving: str  # "", ANGLES, or a point's name
+    angle: float | None  # the aspect angle whose closer deviation sorts the pairs
+    sort: str
+
+
+@dataclass(frozen=True)
+class RefusedRecord:
+    record: Record
+    refusal: Refusal
 
 
 @login_required
@@ -120,17 +138,24 @@ def _pair_filter(request: HttpRequest, chart: Chart | None, settings: ChartSetti
         raise BadRequest(f"sort {sort!r} is not one of {', '.join(SORTS)}")
     if chart is not None and point and point not in {p.point.value for p in chart.points}:
         raise BadRequest(f"point {point!r} is not one of this chart's points")
+    angle = _angle(angle_text, settings, sort)
+    return PairFilter(point=point, angle=angle, sort=sort)
+
+
+def _angle(text: str, settings: ChartSettings, sort: str) -> float | None:
+    """The aspect angle named in `text`, which must be one of the settings'; needed to sort by
+    deviation."""
     angle = None
-    if angle_text:
+    if text:
         try:
-            angle = float(angle_text)
+            angle = float(text)
         except ValueError:
-            raise BadRequest(f"angle {angle_text!r} is not a number") from None
+            raise BadRequest(f"angle {text!r} is not a number") from None
         if angle not in settings.aspect_angles:
             raise BadRequest(f"angle {angle:g} is not one of the aspect angles named")
     if sort == "deviation" and angle is None:
         raise BadRequest("sorting by deviation needs an aspect angle")
-    return PairFilter(point=point, angle=angle, sort=sort)
+    return angle
 
 
 def _pairs(chart: Chart, pair_filter: PairFilter) -> list[PairMeasurement]:
@@ -143,4 +168,100 @@ def _pairs(chart: Chart, pair_filter: PairFilter) -> list[PairMeasurement]:
         assert pair_filter.angle is not None  # _pair_filter refuses a deviation sort without one
         index = chart.settings.aspect_angles.index(pair_filter.angle)
         pairs.sort(key=lambda pair: abs(pair.deviations[index].deviation))
+    return pairs
+
+
+# --- Comparing two records ------------------------------------------------------------------
+
+
+@login_required
+def record_compare(request: HttpRequest, a: int, b: int) -> HttpResponse:
+    records = (get_object_or_404(Record, pk=a), get_object_or_404(Record, pk=b))
+    settings = _settings(request)
+    comparison, refused = _comparison(records, settings)
+    comparison_filter = _comparison_filter(request, comparison, settings)
+    context = {
+        "a": records[0],
+        "b": records[1],
+        "settings": settings,
+        "aspects": request.GET.get("aspects", ""),
+        "time_scale": request.GET.get("time_scale", DEFAULT_TIME_SCALE),
+        "time_scales": sorted(TIME_SCALES),
+        "query": request.GET.urlencode(),
+        "comparison": comparison,
+        "refused": refused,
+        "filter": comparison_filter,
+        "pairs": _comparison_pairs(comparison, comparison_filter) if comparison else (),
+    }
+    return render(request, "research_platform/compare.html", context)
+
+
+@login_required
+def record_compare_pairs(request: HttpRequest, a: int, b: int) -> HttpResponse:
+    records = (get_object_or_404(Record, pk=a), get_object_or_404(Record, pk=b))
+    settings = _settings(request)
+    comparison, refused = _comparison(records, settings)
+    if comparison is None:
+        refusals = {"refused": refused}
+        return render(request, "research_platform/refused_records.html", refusals, status=422)
+    comparison_filter = _comparison_filter(request, comparison, settings)
+    context = {"settings": settings, "pairs": _comparison_pairs(comparison, comparison_filter)}
+    return render(request, "research_platform/compare_pairs.html", context)
+
+
+def _comparison(
+    records: tuple[Record, Record], settings: ChartSettings
+) -> tuple[ChartComparison | None, list[RefusedRecord]]:
+    """B minus A, or the records the engine refused."""
+    charts = []
+    refused = []
+    for record in records:
+        chart, refusal = _chart(record, settings)
+        if refusal is not None:
+            refused.append(RefusedRecord(record, refusal))
+        charts.append(chart)
+    a, b = charts
+    if a is None or b is None:
+        return None, refused
+    return compare(a, b), []
+
+
+def _comparison_filter(
+    request: HttpRequest, comparison: ChartComparison | None, settings: ChartSettings
+) -> ComparisonFilter:
+    involving = request.GET.get("involving", "")
+    sort = request.GET.get("sort", "pair")
+    if sort not in COMPARISON_SORTS:
+        raise BadRequest(f"sort {sort!r} is not one of {', '.join(COMPARISON_SORTS)}")
+    points = {change.point.value for change in comparison.points} if comparison else set()
+    if comparison is not None and involving not in ("", ANGLES, *points):
+        raise BadRequest(f"involving {involving!r} is neither {ANGLES!r} nor one of the points")
+    angle = _angle(request.GET.get("angle", ""), settings, sort)
+    return ComparisonFilter(involving=involving, angle=angle, sort=sort)
+
+
+def _comparison_pairs(
+    comparison: ChartComparison, comparison_filter: ComparisonFilter
+) -> list[PairChange]:
+    involving = comparison_filter.involving
+    if involving == ANGLES:
+        pairs = list(comparison.involving_angles())
+    else:
+        pairs = [
+            change
+            for change in comparison.pairs
+            if not involving or involving in (change.a.a.point.value, change.a.b.point.value)
+        ]
+    match comparison_filter.sort:
+        case "change":
+            pairs.sort(key=lambda change: -abs(change.separation))
+        case "deviation":
+            assert comparison_filter.angle is not None  # _angle refuses a sort without one
+            index = comparison.a.settings.aspect_angles.index(comparison_filter.angle)
+
+            def closer(change: PairChange) -> float:
+                deviation = change.deviations[index]
+                return min(abs(deviation.a.deviation), abs(deviation.b.deviation))
+
+            pairs.sort(key=closer)
     return pairs

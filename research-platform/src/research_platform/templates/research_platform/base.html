@@ -18,6 +18,8 @@
   form.settings label, form.filter label { margin-right: 12px; }
   code { font-size: 0.95em; }
 </style>
+{# HTMX 2 swaps no 4xx response by default; a refused fragment (400) or record (422) is the reason, to be shown. #}
+<meta name="htmx-config" content='{"responseHandling":[{"code":"204","swap":false},{"code":"[23]..","swap":true},{"code":"400","swap":true},{"code":"422","swap":true},{"code":"[45]..","swap":false,"error":true}]}'>
 <script src="{% static 'research_platform/htmx-2.0.11.min.js' %}"></script>
 </head>
 <body>

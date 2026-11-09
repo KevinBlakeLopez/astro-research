@@ -93,7 +93,12 @@ It runs on this machine only: it answers on 127.0.0.1 and localhost, and every p
   - **Changes are continuous numbers.** No orb is applied, so nothing says a contact appeared or disappeared.
   - **The pairs** can be narrowed to those involving an angle (the Ascendant, MC and Vertex, which turn together) or one point. They can be sorted by the size of their change, or by the closer of A's and B's deviations from one aspect angle, which finds contacts that are near-exact in either chart.
   - **Each record's chart and JSON document** are a link away, with the same settings. If the engine refuses either record, the page shows that record's refusal instead of a comparison.
-- **Refusals.** Settings the engine can't use, or a filter the chart can't apply, are refused with a 400. A record the engine refuses shows the refusal (class and message) where the chart would be, and its download returns 422.
+- **Refusals.** Settings, offsets or a filter a page can't use are refused with a 400, and the reason is shown where it happened, with debug mode on or off:
+  - **on a page:** above its forms, which keep what was submitted, with no results;
+  - **in a fragment:** in place of the table;
+  - **in a download:** as plain text.
+
+  Django's own handling would show a bare "Bad Request (400)" with debug mode off and a traceback page with it on (both observed). HTMX swaps no 4xx response by default (read in its source), so the base page tells it to swap in 400 and 422 responses. A record the engine refuses shows the refusal (class and message) where the chart would be, and its download returns 422.
 - **HTMX** 2.0.11 is served from the platform's static files, never from another site. It was taken from the npm package, after the package matched the registry's SHA-512, and its SHA-256 is pinned in the tests.
 - **The session-signing key** comes from `RESEARCH_SECRET_KEY`. Otherwise it's made on first use in `research-platform/.secret_key`, which only you can read and git ignores.
 
@@ -132,7 +137,8 @@ cd research-platform && RESEARCH_DEBUG=1 uv run python manage.py runserver 127.0
 16. Choose **none** under **Rotation-driven**. Expect the list to change without the page reloading, and no series with the Ascendant, MC or Vertex.
 17. Press **Detail** on any series. Expect a line plot and a table of 21 offsets from −600 to 600.
 18. Follow **Download every row as CSV**. Expect a file named `<calculation key>-span600-step60.csv` of about 2 MB that opens in a spreadsheet or pandas.
-19. Enter a span of `7200` and a step of `50` and press **Sweep**. Expect Django's 400 error page with the message "a sweep is at most 241 offsets". It shows the message because `RESEARCH_DEBUG=1`; without it, the page says only "Bad Request (400)".
+19. Enter a span of `7200` and a step of `50` and press **Sweep**. Expect the sensitivity page again, with `7200` and `50` still in the form and "a sweep is at most 241 offsets" above it.
+20. On the first record's chart page with aspect angles named, open Firefox's console and run `htmx.ajax('GET', location.pathname + 'pairs/?aspects=major&point=chiron', '#pairs')`. Expect the pairs table replaced by "That can't be shown: point 'chiron' is not one of this chart's points". HTMX would leave the table as it was without the base page's setting.
 
 ## Tests
 

@@ -5,6 +5,7 @@
 <h1>Birth-time sensitivity: {{ record.subject }}, {{ record.reading }}{% if record.zone %} {{ record.zone }}{% endif %}</h1>
 <p><a href="{% url 'record-chart' record.pk %}?{{ query }}">The chart</a> · <a href="{% url 'admin:research_platform_record_change' record.pk %}">Edit the record</a></p>
 
+{% if error %}{% include "research_platform/request_error.html" %}{% endif %}
 <form class="settings" method="get">
   <label>Aspect angles <input name="aspects" value="{{ aspects }}" placeholder="e.g. major,octile or 30,150"></label>
   <label>Time scale
@@ -18,7 +19,8 @@
 </form>
 <p>Every measurement is recomputed from a whole chart at each offset from the recorded UTC instant, from −span to +span every step. At most 241 offsets and 7200 s either side.</p>
 
-{% if not offsets %}
+{% if error %}
+{% elif not offsets %}
 <p>Name a span and a step to sweep: no offsets are chosen for you.</p>
 {% elif refusal %}
 {% include "research_platform/refusal.html" %}

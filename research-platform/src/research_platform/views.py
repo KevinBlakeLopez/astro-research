@@ -13,7 +13,6 @@ from dataclasses import dataclass
 
 from django.conf import settings as django_settings
 from django.contrib.auth.decorators import login_required
-from django.core.exceptions import BadRequest
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, render
 
@@ -28,6 +27,7 @@ from research_platform.chart_settings import (
     InvalidSettings,
     chart_settings,
 )
+from research_platform.invalid_requests import InvalidRequest, download, fragment
 from research_platform.models import Record
 from research_platform.runner import REFUSALS
 
@@ -65,15 +65,15 @@ class RefusedRecord:
 @login_required
 def record_chart(request: HttpRequest, pk: int) -> HttpResponse:
     record = get_object_or_404(Record, pk=pk)
-    settings = _settings(request)
-    chart, refusal = _chart(record, settings)
-    pair_filter = _pair_filter(request, chart, settings)
-    context = {
-        "record": record,
+    context = {"record": record, **_form_values(request)}
+    try:
+        settings = _settings(request)
+        chart, refusal = _chart(record, settings)
+        pair_filter = _pair_filter(request, chart, settings)
+    except InvalidRequest as error:
+        return _refused_page(request, "research_platform/chart.html", context, error)
+    context |= {
         "settings": settings,
-        "aspects": request.GET.get("aspects", ""),
-        "time_scale": request.GET.get("time_scale", DEFAULT_TIME_SCALE),
-        "time_scales": sorted(TIME_SCALES),
         "chart": chart,
         "refusal": refusal,
         "filter": pair_filter,
@@ -83,6 +83,7 @@ def record_chart(request: HttpRequest, pk: int) -> HttpResponse:
 
 
 @login_required
+@fragment
 def record_chart_pairs(request: HttpRequest, pk: int) -> HttpResponse:
     record = get_object_or_404(Record, pk=pk)
     settings = _settings(request)
@@ -95,6 +96,7 @@ def record_chart_pairs(request: HttpRequest, pk: int) -> HttpResponse:
 
 
 @login_required
+@download
 def record_chart_json(request: HttpRequest, pk: int) -> HttpResponse:
     record = get_object_or_404(Record, pk=pk)
     chart, refusal = _chart(record, _settings(request))
@@ -120,7 +122,24 @@ def _settings(request: HttpRequest) -> ChartSettings:
             request.GET.get("aspects", ""), request.GET.get("time_scale", DEFAULT_TIME_SCALE)
         )
     except InvalidSettings as error:
-        raise BadRequest(str(error)) from error
+        raise InvalidRequest(str(error)) from error
+
+
+def _form_values(request: HttpRequest) -> dict[str, object]:
+    """What the settings form shows: the values as submitted, valid or not."""
+    return {
+        "aspects": request.GET.get("aspects", ""),
+        "time_scale": request.GET.get("time_scale", DEFAULT_TIME_SCALE),
+        "time_scales": sorted(TIME_SCALES),
+        "query": request.GET.urlencode(),
+    }
+
+
+def _refused_page(
+    request: HttpRequest, template: str, context: dict[str, object], error: InvalidRequest
+) -> HttpResponse:
+    """The page with its forms as submitted and the reason above them, and no results."""
+    return render(request, template, {**context, "error": str(error)}, status=400)
 
 
 def _chart(record: Record, settings: ChartSettings) -> tuple[Chart | None, Refusal | None]:
@@ -135,9 +154,9 @@ def _pair_filter(request: HttpRequest, chart: Chart | None, settings: ChartSetti
     angle_text = request.GET.get("angle", "")
     sort = request.GET.get("sort", "pair")
     if sort not in SORTS:
-        raise BadRequest(f"sort {sort!r} is not one of {', '.join(SORTS)}")
+        raise InvalidRequest(f"sort {sort!r} is not one of {', '.join(SORTS)}")
     if chart is not None and point and point not in {p.point.value for p in chart.points}:
-        raise BadRequest(f"point {point!r} is not one of this chart's points")
+        raise InvalidRequest(f"point {point!r} is not one of this chart's points")
     angle = _angle(angle_text, settings, sort)
     return PairFilter(point=point, angle=angle, sort=sort)
 
@@ -150,11 +169,11 @@ def _angle(text: str, settings: ChartSettings, sort: str) -> float | None:
         try:
             angle = float(text)
         except ValueError:
-            raise BadRequest(f"angle {text!r} is not a number") from None
+            raise InvalidRequest(f"angle {text!r} is not a number") from None
         if angle not in settings.aspect_angles:
-            raise BadRequest(f"angle {angle:g} is not one of the aspect angles named")
+            raise InvalidRequest(f"angle {angle:g} is not one of the aspect angles named")
     if sort == "deviation" and angle is None:
-        raise BadRequest("sorting by deviation needs an aspect angle")
+        raise InvalidRequest("sorting by deviation needs an aspect angle")
     return angle
 
 
@@ -177,17 +196,15 @@ def _pairs(chart: Chart, pair_filter: PairFilter) -> list[PairMeasurement]:
 @login_required
 def record_compare(request: HttpRequest, a: int, b: int) -> HttpResponse:
     records = (get_object_or_404(Record, pk=a), get_object_or_404(Record, pk=b))
-    settings = _settings(request)
-    comparison, refused = _comparison(records, settings)
-    comparison_filter = _comparison_filter(request, comparison, settings)
-    context = {
-        "a": records[0],
-        "b": records[1],
+    context = {"a": records[0], "b": records[1], **_form_values(request)}
+    try:
+        settings = _settings(request)
+        comparison, refused = _comparison(records, settings)
+        comparison_filter = _comparison_filter(request, comparison, settings)
+    except InvalidRequest as error:
+        return _refused_page(request, "research_platform/compare.html", context, error)
+    context |= {
         "settings": settings,
-        "aspects": request.GET.get("aspects", ""),
-        "time_scale": request.GET.get("time_scale", DEFAULT_TIME_SCALE),
-        "time_scales": sorted(TIME_SCALES),
-        "query": request.GET.urlencode(),
         "comparison": comparison,
         "refused": refused,
         "filter": comparison_filter,
@@ -197,6 +214,7 @@ def record_compare(request: HttpRequest, a: int, b: int) -> HttpResponse:
 
 
 @login_required
+@fragment
 def record_compare_pairs(request: HttpRequest, a: int, b: int) -> HttpResponse:
     records = (get_object_or_404(Record, pk=a), get_object_or_404(Record, pk=b))
     settings = _settings(request)
@@ -232,10 +250,10 @@ def _comparison_filter(
     involving = request.GET.get("involving", "")
     sort = request.GET.get("sort", "pair")
     if sort not in COMPARISON_SORTS:
-        raise BadRequest(f"sort {sort!r} is not one of {', '.join(COMPARISON_SORTS)}")
+        raise InvalidRequest(f"sort {sort!r} is not one of {', '.join(COMPARISON_SORTS)}")
     points = {change.point.value for change in comparison.points} if comparison else set()
     if comparison is not None and involving not in ("", ANGLES, *points):
-        raise BadRequest(f"involving {involving!r} is neither {ANGLES!r} nor one of the points")
+        raise InvalidRequest(f"involving {involving!r} is neither {ANGLES!r} nor one of the points")
     angle = _angle(request.GET.get("angle", ""), settings, sort)
     return ComparisonFilter(involving=involving, angle=angle, sort=sort)
 

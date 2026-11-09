@@ -6,6 +6,7 @@
 <p>Source: {{ record.source }} · <a href="{% url 'admin:research_platform_record_change' record.pk %}">Edit the record</a> ·
   <a href="{% url 'record-sensitivity' record.pk %}?{{ request.GET.urlencode }}">Birth-time sensitivity</a></p>
 
+{% if error %}{% include "research_platform/request_error.html" %}{% endif %}
 <form class="settings" method="get">
   <label>Aspect angles <input name="aspects" value="{{ aspects }}" placeholder="e.g. major,octile or 30,150"></label>
   <label>Time scale
@@ -15,9 +16,11 @@
   </label>
   <button type="submit">Show</button>
 </form>
-{% if not settings.aspect_angles %}<p>No aspect angles are named, so no deviations are shown. Name some to see them.</p>{% endif %}
+{% if error %}
+{% elif not settings.aspect_angles %}<p>No aspect angles are named, so no deviations are shown. Name some to see them.</p>{% endif %}
 
-{% if refusal %}
+{% if error %}
+{% elif refusal %}
 {% include "research_platform/refusal.html" %}
 {% else %}
 <p>Calculation key <code>{{ chart.calculation_key }}</code> ·

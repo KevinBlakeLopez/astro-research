@@ -9,6 +9,7 @@
   (<a href="{% url 'record-chart-json' b.pk %}?{{ query }}">JSON</a>) ·
   <a href="{% url 'record-compare' b.pk a.pk %}?{{ query }}">Swap A and B</a></p>
 
+{% if error %}{% include "research_platform/request_error.html" %}{% endif %}
 <form class="settings" method="get">
   <label>Aspect angles <input name="aspects" value="{{ aspects }}" placeholder="e.g. major,octile or 30,150"></label>
   <label>Time scale
@@ -18,9 +19,11 @@
   </label>
   <button type="submit">Show</button>
 </form>
-{% if not settings.aspect_angles %}<p>No aspect angles are named, so no deviations are shown. Name some to see them.</p>{% endif %}
+{% if error %}
+{% elif not settings.aspect_angles %}<p>No aspect angles are named, so no deviations are shown. Name some to see them.</p>{% endif %}
 
-{% if refused %}
+{% if error %}
+{% elif refused %}
 {% include "research_platform/refused_records.html" %}
 {% else %}
 <p>Every change is B minus A, a continuous number: no orb is applied, so nothing says a contact appeared or disappeared.</p>

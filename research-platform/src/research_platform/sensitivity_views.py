@@ -18,16 +18,22 @@ from datetime import timedelta
 from urllib.parse import urlencode
 
 from django.contrib.auth.decorators import login_required
-from django.core.exceptions import BadRequest
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, render
 
 from astro_research.chart import ChartSettings
 from astro_research.sensitivity import MeasurementSeries, Quantity, SensitivitySweep, sweep
-from research_platform.chart_settings import DEFAULT_TIME_SCALE, TIME_SCALES
+from research_platform.invalid_requests import InvalidRequest, download, fragment
 from research_platform.models import Record
 from research_platform.runner import REFUSALS
-from research_platform.views import Refusal, _angle, _ephemeris, _settings
+from research_platform.views import (
+    Refusal,
+    _angle,
+    _ephemeris,
+    _form_values,
+    _refused_page,
+    _settings,
+)
 
 MAX_SPAN_S = 7200
 MAX_OFFSETS = 241
@@ -75,32 +81,34 @@ class SeriesRow:
 @login_required
 def record_sensitivity(request: HttpRequest, pk: int) -> HttpResponse:
     record = get_object_or_404(Record, pk=pk)
-    settings = _settings(request)
-    offsets = _offsets(request, required=False)
-    swept, refusal = _sweep(record, settings, offsets) if offsets else (None, None)
-    series_filter = _series_filter(request, swept, settings)
-    rows = _rows(request, swept, series_filter) if swept else []
     context = {
         "record": record,
-        "settings": settings,
-        "aspects": request.GET.get("aspects", ""),
-        "time_scale": request.GET.get("time_scale", DEFAULT_TIME_SCALE),
-        "time_scales": sorted(TIME_SCALES),
-        "offsets": offsets,
+        **_form_values(request),
         "span": request.GET.get("span", ""),
         "step": request.GET.get("step", ""),
+    }
+    try:
+        settings = _settings(request)
+        offsets = _offsets(request, required=False)
+        swept, refusal = _sweep(record, settings, offsets) if offsets else (None, None)
+        series_filter = _series_filter(request, swept, settings)
+    except InvalidRequest as error:
+        return _refused_page(request, "research_platform/sensitivity.html", context, error)
+    context |= {
+        "settings": settings,
+        "offsets": offsets,
         "sweep": swept,
         "refusal": refusal,
         "filter": series_filter,
         "quantities": [quantity.value for quantity in Quantity],
-        "rows": rows,
+        "rows": _rows(request, swept, series_filter) if swept else [],
         "total": len(swept.series) if swept else 0,
-        "query": request.GET.urlencode(),
     }
     return render(request, "research_platform/sensitivity.html", context)
 
 
 @login_required
+@fragment
 def record_sensitivity_series(request: HttpRequest, pk: int) -> HttpResponse:
     record = get_object_or_404(Record, pk=pk)
     settings = _settings(request)
@@ -120,6 +128,7 @@ def record_sensitivity_series(request: HttpRequest, pk: int) -> HttpResponse:
 
 
 @login_required
+@fragment
 def record_sensitivity_detail(request: HttpRequest, pk: int) -> HttpResponse:
     record = get_object_or_404(Record, pk=pk)
     settings = _settings(request)
@@ -143,6 +152,7 @@ def record_sensitivity_detail(request: HttpRequest, pk: int) -> HttpResponse:
 
 
 @login_required
+@download
 def record_sensitivity_csv(request: HttpRequest, pk: int) -> HttpResponse:
     record = get_object_or_404(Record, pk=pk)
     settings = _settings(request)
@@ -180,19 +190,19 @@ def _offsets(request: HttpRequest, *, required: bool) -> Offsets | None:
     if span_text is None and step_text is None and not required:
         return None
     if span_text is None or step_text is None:
-        raise BadRequest("name both a span and a step, in seconds")
+        raise InvalidRequest("name both a span and a step, in seconds")
     try:
         span, step = int(span_text), int(step_text)
     except ValueError:
-        raise BadRequest("the span and step are whole seconds") from None
+        raise InvalidRequest("the span and step are whole seconds") from None
     if span <= 0 or step <= 0:
-        raise BadRequest("the span and step must be positive")
+        raise InvalidRequest("the span and step must be positive")
     if span % step:
-        raise BadRequest(f"the span ({span} s) must be a whole number of steps ({step} s)")
+        raise InvalidRequest(f"the span ({span} s) must be a whole number of steps ({step} s)")
     if span > MAX_SPAN_S:
-        raise BadRequest(f"the span is at most {MAX_SPAN_S} s either side")
+        raise InvalidRequest(f"the span is at most {MAX_SPAN_S} s either side")
     if 2 * (span // step) + 1 > MAX_OFFSETS:
-        raise BadRequest(f"a sweep is at most {MAX_OFFSETS} offsets")
+        raise InvalidRequest(f"a sweep is at most {MAX_OFFSETS} offsets")
     return Offsets(span=span, step=step)
 
 
@@ -211,21 +221,21 @@ def _series_filter(
 ) -> SeriesFilter:
     quantity = request.GET.get("quantity", "")
     if quantity and quantity not in {member.value for member in Quantity}:
-        raise BadRequest(f"quantity {quantity!r} is not one the sweep measures")
+        raise InvalidRequest(f"quantity {quantity!r} is not one the sweep measures")
     involving = request.GET.get("involving", "")
     points = {point.point.value for point in swept.base.points} if swept else set()
     if swept is not None and involving and involving not in points:
-        raise BadRequest(f"point {involving!r} is not one of this chart's points")
+        raise InvalidRequest(f"point {involving!r} is not one of this chart's points")
     rotation = request.GET.get("rotation", "")
     if rotation not in ROTATIONS:
-        raise BadRequest(f"rotation {rotation!r} is not 'only' or 'none'")
+        raise InvalidRequest(f"rotation {rotation!r} is not 'only' or 'none'")
     limit_text = request.GET.get("limit", "")
     limit: int | None = LIST_LIMIT
     if limit_text == "all":
         limit = None
     elif limit_text:
         if not limit_text.isdigit() or int(limit_text) == 0:
-            raise BadRequest(f"limit {limit_text!r} is neither 'all' nor a positive number")
+            raise InvalidRequest(f"limit {limit_text!r} is neither 'all' nor a positive number")
         limit = int(limit_text)
     angle = _angle(request.GET.get("angle", ""), settings, "")
     return SeriesFilter(quantity, involving, angle, rotation, limit)
@@ -270,7 +280,7 @@ def _one_series(request: HttpRequest, swept: SensitivitySweep) -> MeasurementSer
     try:
         angle = float(angle_text) if angle_text else None
     except ValueError:
-        raise BadRequest(f"angle {angle_text!r} is not a number") from None
+        raise InvalidRequest(f"angle {angle_text!r} is not a number") from None
     for series in swept.series:
         names = [point.value for point in series.points]
         if (
@@ -279,7 +289,7 @@ def _one_series(request: HttpRequest, swept: SensitivitySweep) -> MeasurementSer
             and series.aspect_angle == angle
         ):
             return series
-    raise BadRequest("the sweep has no such series")
+    raise InvalidRequest("the sweep has no such series")
 
 
 def _series_id(series: MeasurementSeries) -> str:

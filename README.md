@@ -9,7 +9,7 @@ It's a calculation engine only: there's no web application, database or GUI.
 - **Positions:** the Sun, Moon, Mercury to Pluto, the mean and true lunar node, and the mean and osculating lunar apogee. Each has ecliptic and equatorial coordinates, distance and speeds.
 - **Angles:** Ascendant, MC, Descendant, IC and Vertex, with the ARMC.
 - **Raw measurements** between every two points: separations, deviations from any aspect angles you choose (for example the octile series 45°, 90°, 135° and 180°), parallels and contra-parallels. There are no orbs and no scores.
-- **Charts** with a deterministic calculation key.
+- **Charts** with a deterministic calculation key, written as JSON documents that read back exactly.
 - **Two-chart comparisons.**
 - **Birth-time sensitivity sweeps.**
 - **The nearest solar and lunar eclipses** before and after a birth.
@@ -21,6 +21,7 @@ Civil times come in four forms: UTC, a local time with an IANA zone, a local tim
 
 - [docs/CALCULATION_CONVENTIONS.md](docs/CALCULATION_CONVENTIONS.md): every convention, its alternative, and how it was validated.
 - [docs/DEPENDENCY_ASSESSMENT.md](docs/DEPENDENCY_ASSESSMENT.md): Swiss Ephemeris, its bindings, Immanuel, Morinus, Valens, Astrolog and Planetdance.
+- [docs/RESULT_FORMAT.md](docs/RESULT_FORMAT.md): charts as JSON documents (`chart-result-v1`), read back exactly.
 - [docs/PHASE1_REPORT.md](docs/PHASE1_REPORT.md): what was built and tested, the results, limitations and recommendations.
 
 ## Setup
@@ -116,6 +117,15 @@ record = BirthRecord(
 )
 settings = ChartSettings(aspect_angles=tuple(sorted({*MAJOR, *OCTILE})))
 chart = compute_chart(eph, record, settings)
+```
+
+As a JSON document, and back:
+
+```python
+from astro_research.result_format import chart_from_json, chart_to_json
+
+text = chart_to_json(chart)
+assert chart_from_json(text) == chart
 ```
 
 ## Licence

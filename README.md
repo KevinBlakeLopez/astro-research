@@ -2,7 +2,7 @@
 
 A headless Python engine for exploratory astrology research. It computes astronomical positions and raw measurements on Swiss Ephemeris, validated against independent references, and fails closed when an input or its environment can't be trusted.
 
-The engine itself has no web application, database or GUI. The research platform in `research-platform/`, a separate Django package, stores subjects, sources, records and datasets in PostgreSQL and runs the engine over them; there's no web interface yet.
+The engine itself has no web application, database or GUI. The research platform in `research-platform/`, a separate Django package, stores subjects, sources, records and datasets in PostgreSQL, runs the engine over them, and has a local web interface: the admin, and a chart page for each record.
 
 ## What it computes
 
@@ -22,7 +22,7 @@ Civil times come in four forms: UTC, a local time with an IANA zone, a local tim
 - [docs/CALCULATION_CONVENTIONS.md](docs/CALCULATION_CONVENTIONS.md): every convention, its alternative, and how it was validated.
 - [docs/DEPENDENCY_ASSESSMENT.md](docs/DEPENDENCY_ASSESSMENT.md): Swiss Ephemeris, its bindings, Immanuel, Morinus, Valens, Astrolog and Planetdance.
 - [docs/RESULT_FORMAT.md](docs/RESULT_FORMAT.md): charts as JSON documents (`chart-result-v1`), read back exactly.
-- [docs/RESEARCH_PLATFORM.md](docs/RESEARCH_PLATFORM.md): the research platform: what it stores, how runs work, and how to run it and its tests.
+- [docs/RESEARCH_PLATFORM.md](docs/RESEARCH_PLATFORM.md): the research platform: what it stores, how runs work, its web interface, and how to run it and its tests.
 - [docs/PHASE1_REPORT.md](docs/PHASE1_REPORT.md): what was built and tested, the results, limitations and recommendations.
 
 ## Setup

@@ -193,7 +193,7 @@ This assessment covers Swiss Ephemeris, its two Python bindings (pysweph and pys
 
 ## 10. The research platform's dependencies
 
-The platform (`research-platform/`, `docs/RESEARCH_PLATFORM.md`) is a separate distribution; the engine depends on none of these (`tests/test_boundary.py`). Versions, dates and the packages' licences are from PyPI's and Docker Hub's metadata on 2026-11-09 (read). Docker Hub gives no licence: PostgreSQL's is from its own documentation, and the image also holds Debian's packages (unverified).
+The platform (`research-platform/`, `docs/RESEARCH_PLATFORM.md`) is a separate distribution; the engine depends on none of these (`tests/test_boundary.py`). Versions, dates and the packages' licences are from PyPI's, npm's and Docker Hub's metadata on 2026-11-09 (read). Docker Hub gives no licence: PostgreSQL's is from its own documentation, and the image also holds Debian's packages (unverified).
 
 | Package | Pinned | Released | Licence | Use |
 |---|---|---|---|---|
@@ -201,9 +201,12 @@ The platform (`research-platform/`, `docs/RESEARCH_PLATFORM.md`) is a separate d
 | psycopg (with psycopg-binary) | 3.3.8 | 2026-11-04 | LGPL-3.0-only | Django's PostgreSQL driver |
 | PostgreSQL image | `postgres:18.6`, digest `sha256:e3d24f69…df3c42` | 2026-11-06 | PostgreSQL Licence | The tests' and local development's database (`research-platform/compose.yaml`) |
 | django-stubs | 6.1.2 (development) | 2026-10-05 | MIT | Types for mypy's strict check |
+| django-stubs-ext | 6.1.2 | 2026-10-05 | MIT | Lets classes written for the type checker, such as `admin.ModelAdmin[Record]`, run (`monkeypatch()` in the settings) |
+| HTMX | 2.0.11, `htmx.min.js`, SHA-256 `d6fdc75f…00f717` | 2026-09-22 | 0BSD | The chart page's pairs table; served from the platform's static files |
 | pytest-django | 4.14.0 (development) | 2026-08-10 | BSD | The platform's tests |
 
 - **Recent releases.** Django's and psycopg's pins were less than a week old when chosen; they are patch releases, which usually carry security fixes.
+- **HTMX** came from the npm package `htmx.org-2.0.11.tgz`, whose SHA-512 matched the registry's integrity value before the file was taken out (observed). npm also tags a 4.x as `next`; 2.0.11 is its latest stable release.
 - **Licences.** LGPL-3.0 permits use of the library from AGPL-3.0-or-later code (inferred from the licence texts; not legal advice). The others are permissive.
 - **psycopg-binary** bundles its own libpq, as psycopg's documentation describes, so the Homebrew libpq on this machine isn't used (unverified).
 - **Not audited:** none of these was read beyond its metadata and documentation, and the PostgreSQL image's contents weren't inspected.

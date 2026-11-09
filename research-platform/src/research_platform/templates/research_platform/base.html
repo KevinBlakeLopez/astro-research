@@ -1,0 +1,33 @@
+{% load static %}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Research platform{% endblock %}</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 15px/1.45 system-ui, sans-serif; margin: 0 auto; max-width: 1200px; padding: 0 16px 48px; }
+  header { display: flex; gap: 16px; align-items: baseline; padding: 12px 0; border-bottom: 1px solid #8884; }
+  header form { margin-left: auto; }
+  h1 { font-size: 1.4em; } h2 { font-size: 1.15em; margin-top: 2em; }
+  table { border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { padding: 2px 10px; text-align: right; border-bottom: 1px solid #8882; }
+  th:first-child, td:first-child, th.name, td.name { text-align: left; }
+  .scroll { overflow-x: auto; }
+  .refusal { border-left: 4px solid #c33; padding: 8px 12px; background: #c331; }
+  form.settings label, form.filter label { margin-right: 12px; }
+  code { font-size: 0.95em; }
+</style>
+<script src="{% static 'research_platform/htmx-2.0.11.min.js' %}"></script>
+</head>
+<body>
+<header>
+  <strong>Research platform</strong>
+  <a href="{% url 'admin:index' %}">Admin</a>
+  {% if user.is_authenticated %}
+  <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button type="submit">Log out</button></form>
+  {% endif %}
+</header>
+<main>{% block content %}{% endblock %}</main>
+</body>
+</html>

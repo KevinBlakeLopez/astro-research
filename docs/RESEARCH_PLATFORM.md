@@ -2,7 +2,7 @@
 
 `research-platform/` stores subjects, sources, birth records and datasets in PostgreSQL, and runs the engine over datasets. It's a Django project and a separate distribution, `research-platform`, which depends on the engine. The engine doesn't depend on it: no `astro_research` module imports Django, psycopg or the platform, and the engine's distribution depends on neither (`tests/test_boundary.py`).
 
-There's no web interface yet. Django owns the schema (`research_platform/models.py` and its migrations), so a web interface added later uses the same models.
+Django owns the schema (`research_platform/models.py` and its migrations). The web interface, described below, is the admin for entering data plus a chart page for each record.
 
 ## What is stored
 
@@ -59,6 +59,48 @@ cd research-platform && uv run python manage.py compute_dataset NAME --aspects m
 ```
 
 The command prints a summary such as `run 3: 180 charts (12 computed, 168 reused), 2 refused`. `--time-scale` takes the same values as the scripts and defaults to `ut1-from-iers`. Set `RESEARCH_DB_HOST`, `RESEARCH_DB_PORT`, `RESEARCH_DB_NAME`, `RESEARCH_DB_USER` and `RESEARCH_DB_PASSWORD` to use another database, and `RESEARCH_EPHE_DIR` for another ephemeris folder.
+
+## The web interface
+
+It runs on this machine only: it answers on 127.0.0.1 and localhost, and every page needs a login.
+
+- **The admin** (`/admin/`) is where subjects, sources, records and datasets are entered. Saving a record asks the engine to build it, so the engine's reason for refusing one shows on the form. Runs, outcomes and stored charts can be looked at but not added, changed or deleted. A record's admin page links to its chart.
+- **A record's chart** (`/records/<id>/chart/`) is computed on request, under the settings in its address: `aspects` (degrees and/or `major`, `octile`) and `time_scale` (default `ut1-from-iers`). So an address reproduces exactly what the page shows. It shows:
+  - the resolved time and where UT1 came from;
+  - positions, angles and every pair, to six decimals (about 4 mas), formatted as Python formats them;
+  - a link to download the chart's `chart-result-v1` document, with every value at full precision.
+
+  **Aspect angles are never defaulted.** With none named, the pairs show separations and declinations, and no deviations.
+- **The pairs table** can be narrowed to one point and sorted by deviation from one aspect angle. HTMX fetches the table again without reloading the page (`/records/<id>/chart/pairs/`).
+- **Refusals.** Settings the engine can't use, or a filter the chart can't apply, are refused with a 400. A record the engine refuses shows the refusal (class and message) where the chart would be, and its download returns 422.
+- **HTMX** 2.0.11 is served from the platform's static files, never from another site. It was taken from the npm package, after the package matched the registry's SHA-512, and its SHA-256 is pinned in the tests.
+- **The session-signing key** comes from `RESEARCH_SECRET_KEY`. Otherwise it's made on first use in `research-platform/.secret_key`, which only you can read and git ignores.
+
+**Running it.** With the database running (see above):
+
+```bash
+cd research-platform && uv run python manage.py migrate
+```
+
+```bash
+cd research-platform && uv run python manage.py createsuperuser
+```
+
+```bash
+cd research-platform && RESEARCH_DEBUG=1 uv run python manage.py runserver 127.0.0.1:8000
+```
+
+`RESEARCH_DEBUG=1` lets the development server serve the static files (HTMX), and shows Django's error pages; it's for this machine only. Then open http://127.0.0.1:8000/admin/ and log in.
+
+**Checking it in Firefox.** The automated tests check the pages' content through Django's test client, not in a browser. These steps check what only a browser shows:
+1. Add a subject, a source and a record. For example, a zoned local time, reading `1987-06-15T04:25:00`, zone `Europe/London`, latitude `51.5074`, longitude `-0.1278`.
+2. On the record's admin page, follow **Chart**. Expect the time, positions, angles and pairs tables, with no deviation columns and a note asking for aspect angles.
+3. Enter `major,octile` as the aspect angles and press **Show**. Expect deviation columns for 0°, 45°, 60°, 90°, 120°, 135° and 180°, and an address ending in `?aspects=major%2Coctile&time_scale=ut1-from-iers`.
+4. Choose `sun` under **Involving**. Expect the table to shrink to the Sun's 16 pairs without the page reloading. Firefox's Network panel shows one request to `/chart/pairs/`.
+5. Choose **by deviation from** and `90°`. Expect the Sun's pairs ordered from the closest to a square to the farthest.
+6. Follow **Download the JSON document**. Expect a file named after the calculation key shown on the page.
+7. Add a second record at `1987-10-25T01:30:00`, `Europe/London`, and open its chart. Expect `AmbiguousLocalTime` and the engine's message instead of the tables.
+8. Switch the system to dark mode. Expect the pages to follow it.
 
 ## Tests
 

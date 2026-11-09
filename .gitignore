@@ -12,3 +12,6 @@ dist/
 
 # Local working notes (measurements, decisions); edited into docs/ before anything is committed
 /docs/working-notes/
+
+# The research platform's local session-signing key (research-platform/settings.py)
+/research-platform/.secret_key

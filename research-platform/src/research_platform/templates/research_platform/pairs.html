@@ -1,0 +1,23 @@
+{% load measurements %}<table>
+  <thead>
+    <tr>
+      <th class="name">Pair</th><th>Separation</th><th>Signed difference</th><th>Rate (°/day)</th>
+      <th>Great circle</th><th>Declination difference</th><th>Declination sum</th>
+      {% for angle in settings.aspect_angles %}<th>Deviation from {{ angle|stringformat:"g" }}°</th>{% endfor %}
+    </tr>
+  </thead>
+  <tbody>
+    {% for pair in pairs %}
+    <tr data-pair="{{ pair.a.point.value }}-{{ pair.b.point.value }}">
+      <td class="name">{{ pair.a.point.value }} – {{ pair.b.point.value }}</td>
+      <td>{{ pair.separation|fixed }}</td>
+      <td>{{ pair.longitude_difference|fixed }}</td>
+      <td>{{ pair.separation_rate|fixed }}</td>
+      <td>{{ pair.great_circle_separation|fixed }}</td>
+      <td>{{ pair.declination_difference|fixed }}</td>
+      <td>{{ pair.declination_sum|fixed }}</td>
+      {% for deviation in pair.deviations %}<td data-angle="{{ deviation.angle|stringformat:'r' }}">{{ deviation.deviation|fixed }}</td>{% endfor %}
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>

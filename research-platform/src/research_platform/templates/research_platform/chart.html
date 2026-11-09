@@ -1,0 +1,83 @@
+{% extends "research_platform/base.html" %}
+{% load measurements %}
+{% block title %}Chart: {{ record.subject }}{% endblock %}
+{% block content %}
+<h1>{{ record.subject }}: {{ record.reading }}{% if record.zone %} {{ record.zone }}{% endif %}</h1>
+<p>Source: {{ record.source }} · <a href="{% url 'admin:research_platform_record_change' record.pk %}">Edit the record</a></p>
+
+<form class="settings" method="get">
+  <label>Aspect angles <input name="aspects" value="{{ aspects }}" placeholder="e.g. major,octile or 30,150"></label>
+  <label>Time scale
+    <select name="time_scale">
+      {% for name in time_scales %}<option value="{{ name }}"{% if name == time_scale %} selected{% endif %}>{{ name }}</option>{% endfor %}
+    </select>
+  </label>
+  <button type="submit">Show</button>
+</form>
+{% if not settings.aspect_angles %}<p>No aspect angles are named, so no deviations are shown. Name some to see them.</p>{% endif %}
+
+{% if refusal %}
+{% include "research_platform/refusal.html" %}
+{% else %}
+<p>Calculation key <code>{{ chart.calculation_key }}</code> ·
+  <a href="{% url 'record-chart-json' record.pk %}?{{ request.GET.urlencode }}">Download the JSON document</a> (every value at full precision)</p>
+
+<h2>Time</h2>
+<table>
+  <tr><th class="name">UTC</th><td class="name">{{ chart.time.instant.utc.isoformat }}</td></tr>
+  <tr><th class="name">Offset source</th><td class="name">{{ chart.time.instant.offset_source.value }}{% if chart.time.instant.zone_abbreviation %} ({{ chart.time.instant.zone_abbreviation }}, tzdata {{ chart.time.instant.tzdata_version }}){% endif %}</td></tr>
+  <tr><th class="name">Time scale</th><td class="name">{{ chart.time.time_scale.value }}</td></tr>
+  <tr><th class="name">UT1 from</th><td class="name">{{ chart.time.ut1_basis.value }}</td></tr>
+  <tr><th class="name">UT1 − UTC (s)</th><td>{{ chart.time.ut1_minus_utc_s|fixed }}</td></tr>
+  <tr><th class="name">ΔT (s)</th><td>{{ chart.time.delta_t_s|fixed }}</td></tr>
+  <tr><th class="name">JD UT1</th><td>{{ chart.time.jd_ut1|fixed:8 }}</td></tr>
+  <tr><th class="name">JD TT</th><td>{{ chart.time.jd_tt|fixed:8 }}</td></tr>
+</table>
+
+<h2>Positions (degrees; speeds per day)</h2>
+<div class="scroll"><table>
+  <thead><tr><th class="name">Point</th><th>Longitude</th><th>Latitude</th><th>Speed</th><th>Right ascension</th><th>Declination</th><th>Distance (AU)</th></tr></thead>
+  <tbody>
+  {% for body in chart.positions.bodies %}
+  <tr><td class="name">{{ body.body.value }}</td><td>{{ body.longitude|fixed }}</td><td>{{ body.latitude|fixed }}</td><td>{{ body.longitude_speed|fixed }}</td><td>{{ body.right_ascension|fixed }}</td><td>{{ body.declination|fixed }}</td><td>{{ body.distance_au|fixed }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+
+<h2>Angles (degrees)</h2>
+<table>
+  <tr><th class="name">ARMC</th><td>{{ chart.angles.armc|fixed }}</td></tr>
+  <tr><th class="name">Ascendant</th><td>{{ chart.angles.ascendant|fixed }}</td></tr>
+  <tr><th class="name">Midheaven</th><td>{{ chart.angles.midheaven|fixed }}</td></tr>
+  <tr><th class="name">Descendant</th><td>{{ chart.angles.descendant|fixed }}</td></tr>
+  <tr><th class="name">IC</th><td>{{ chart.angles.imum_coeli|fixed }}</td></tr>
+  <tr><th class="name">Vertex</th><td>{{ chart.angles.vertex|fixed }}</td></tr>
+  <tr><th class="name">True obliquity</th><td>{{ chart.angles.true_obliquity|fixed }}</td></tr>
+  <tr><th class="name">Beyond the polar circle</th><td>{{ chart.angles.beyond_polar_circle|yesno:"yes,no" }}</td></tr>
+</table>
+
+<h2>Pairs (degrees)</h2>
+<form class="filter" hx-get="{% url 'record-chart-pairs' record.pk %}" hx-target="#pairs" hx-trigger="change">
+  <input type="hidden" name="aspects" value="{{ aspects }}">
+  <input type="hidden" name="time_scale" value="{{ time_scale }}">
+  <label>Involving
+    <select name="point">
+      <option value="">any point</option>
+      {% for point in chart.points %}<option value="{{ point.point.value }}"{% if point.point.value == filter.point %} selected{% endif %}>{{ point.point.value }}</option>{% endfor %}
+    </select>
+  </label>
+  {% if settings.aspect_angles %}
+  <label>Sort
+    <select name="sort">
+      <option value="pair">by pair</option>
+      <option value="deviation"{% if filter.sort == "deviation" %} selected{% endif %}>by deviation from</option>
+    </select>
+  </label>
+  <select name="angle" aria-label="Aspect angle">
+    {% for angle in settings.aspect_angles %}<option value="{{ angle|stringformat:'r' }}"{% if angle == filter.angle %} selected{% endif %}>{{ angle|stringformat:"g" }}°</option>{% endfor %}
+  </select>
+  {% endif %}
+</form>
+<div id="pairs" class="scroll">{% include "research_platform/pairs.html" %}</div>
+{% endif %}
+{% endblock %}

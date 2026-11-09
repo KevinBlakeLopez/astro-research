@@ -61,7 +61,7 @@ Ambiguity is detected by resolving both folds and checking the round trip. Diffe
 
 ### 2.2 Time scales (`astronomical_time.py`, `TimeScale`)
 
-How a UTC reading becomes UT1 is a convention. The default is `UT1_FROM_IERS`. The other two scales are kept for comparison, and for instants after the IERS table's last day.
+How a UTC reading becomes UT1 is a convention. The default is `UT1_FROM_IERS`. The other two scales are kept for comparison, and for instants after the IERS table's last day: the model scale up to 2033-09-16, the clock convention beyond.
 
 | `TimeScale` | UT1 | Used by |
 |---|---|---|
@@ -93,12 +93,17 @@ The scales compare as follows:
 
 Swiss Ephemeris 2.10.03's ΔT table holds measured values up to 2023.0 and extrapolated ones for 2024–2028 (`swephlib.c:2426-2496`), and the Earth's rotation didn't follow the extrapolation. One second of time moves the Ascendant by about 33″ at London.
 
-**`UT1_FROM_DELTA_T` after 2033.** From 2034, Swiss Ephemeris's `utc_to_jd` no longer applies leap seconds: its model's UT1 − UTC passes −1 s, so it assumes leap seconds are missing and takes the reading as UT1 (observed). UT1 − UTC is then 0, but `ut1_basis` still records `DELTA_T_MODEL`.
+**Where `UT1_FROM_DELTA_T` ends.** From 2033-09-17 Swiss Ephemeris's ΔT model puts UT1 − UTC past −1 s. Its `utc_to_jd` then assumes leap seconds are missing and takes the reading as UT1, for every day to 2400 (`swedate.c:425-436`; observed). Used as it is, one second of readings across that day would be two seconds of TT. `jdet_to_utc` makes the same test at the instant instead of at the date's 0h, so from 2033-09-16 15:59:27 UTC the reading it gives for a TT is a second early (measured). The model scale therefore:
+- refuses readings from 2033-09-17 with `DateOutsideLeapSeconds`, a `DateOutsideEphemeris`;
+- in `time_from_tt`, refuses a TT whose reading doesn't convert back to it within 1 ms, so eclipse and paran instants from 2033-09-16 15:59:27 UTC are refused too.
+
+Taking the reading as UT1 is the clock convention: from 2033-09-17, `CLOCK_AS_UT1` gives exactly the UT1 and TT Swiss Ephemeris would have (observed). The day is found from Swiss Ephemeris itself, the first time the model scale is used in a process (about 12 ms).
 
 `Ephemeris.time_from_tt` and `time_from_ut1` turn an event's Julian date back into an `AstronomicalTime`, by way of its UTC reading under the caller's time scale.
 - The reading is rounded to the microsecond.
 - Under `UT1_FROM_DELTA_T` and `UT1_FROM_IERS`, the reading is TT's own UTC. An instant inside a leap second has no reading and is refused (`InstantInLeapSecond`).
 - Under `UT1_FROM_IERS`, an instant after the table's last day is refused (`DateOutsideUt1Data`).
+- Under `UT1_FROM_DELTA_T`, an instant from 2033-09-16 15:59:27 UTC is refused (`DateOutsideLeapSeconds`).
 
 ### 2.3 Julian dates and resolution
 

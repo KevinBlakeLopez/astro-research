@@ -70,6 +70,8 @@ from astro_research.positions import (
 _PROBE_JD_UT = 2451545.0  # 2000-01-01 12:00 UT, inside the pinned files
 _JD_1972 = 2441317.5  # 1972-01-01 0h UTC: UTC with leap seconds from then; civil time was UT before
 _MJD_EPOCH = date(1858, 11, 17)
+_SCAN_END = date(2400, 1, 1)  # the pinned planet file ends 2400-01-10 TT
+_ROUND_TRIP_DAYS = 1e-3 / 86400  # a time from TT must come back to it: rounding is about 40 us
 _active_folder: Path | None = None  # the verified folder Swiss Ephemeris currently points at
 _OPEN = object()  # only Ephemeris.open() holds this, so only it can construct a handle
 _SE_POINT: dict[Point, int] = {
@@ -164,6 +166,10 @@ class DateOutsideEphemeris(EphemerisEnvironmentError):
 
 class DateOutsideUt1Data(DateOutsideEphemeris):
     """The instant is after the packaged IERS UT1 table's last day; name another time scale."""
+
+
+class DateOutsideLeapSeconds(DateOutsideEphemeris):
+    """Under UT1_FROM_DELTA_T, the instant is where Swiss Ephemeris stops applying leap seconds."""
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -290,7 +296,7 @@ def verify_ut1_data(source: Traversable) -> Ut1Table:
         tt_minus_utc = (jd_tt - (int(mjd) + 2400000.5)) * 86400
         tai_minus_utc = round(tt_minus_utc - 32.184)
         # Swiss Ephemeris counts leap seconds from its own table; where its delta-T model says
-        # some are missing (from 2034, observed), it takes the reading as UT1 instead.
+        # some are missing (from 2033-09-17, observed), it takes the reading as UT1 instead.
         if abs(tt_minus_utc - 32.184 - tai_minus_utc) > 1e-3:
             raise EphemerisNotLoaded(f"Swiss Ephemeris has no leap-second count for {day}")
         tt.append(jd_tt)
@@ -411,6 +417,9 @@ class Ephemeris:
                     instant, time_scale, clock, clock, Ut1Basis.CLOCK_READING
                 )
             case TimeScale.UT1_FROM_DELTA_T:
+                end = _model_scale_end()
+                if end is not None and utc.date() >= end:
+                    raise _past_model_scale(end, f"{utc:%Y-%m-%d %H:%M:%S.%f} UTC")
                 _, jd_ut1 = swe.utc_to_jd(
                     utc.year, utc.month, utc.day, utc.hour, utc.minute, seconds, swe.GREG_CAL
                 )
@@ -512,6 +521,10 @@ class Ephemeris:
         its table's last day, and reads one before 1972 as the clock convention does. The reading
         is rounded to the microsecond, so the result's jd_tt differs from `jd_tt` by up to 0.5 us
         plus Julian-date rounding (about 40 us).
+
+        Under UT1_FROM_DELTA_T, a reading that doesn't convert back to `jd_tt` within 1 ms is
+        refused: just before Swiss Ephemeris stops applying leap seconds, the reading it gives
+        for a TT is a second early (from 2033-09-16 15:59:27 UTC, measured).
         """
         self._require_active()
         match time_scale:
@@ -530,7 +543,12 @@ class Ephemeris:
                     reading = _utc_reading(jd_tt, *swe.jdet_to_utc(jd_tt, swe.GREG_CAL))
             case _:
                 assert_never(time_scale)
-        return self.time(resolve(UtcTime(utc=reading), _NOWHERE), time_scale)
+        time = self.time(resolve(UtcTime(utc=reading), _NOWHERE), time_scale)
+        if time_scale is TimeScale.UT1_FROM_DELTA_T and abs(time.jd_tt - jd_tt) > _ROUND_TRIP_DAYS:
+            end = _model_scale_end()
+            given = f"{reading:%Y-%m-%d %H:%M:%S} UTC"
+            raise _past_model_scale(end, f"JD {jd_tt} TT ({given}, which doesn't convert back)")
+        return time
 
     def eclipse_search(
         self, kind: EclipseKind, start_jd_ut1: float, *, backward: bool
@@ -738,6 +756,30 @@ def _utc_reading(
             f"{hour:02d}:{minute:02d}:{seconds:.6f} UTC"
         )
     return datetime(year, month, day, hour, minute, tzinfo=UTC) + timedelta(seconds=seconds)
+
+
+@functools.cache
+def _model_scale_end() -> date | None:
+    """The first day Swiss Ephemeris's utc_to_jd takes a reading as UT1 instead of applying leap
+    seconds, or None. It does so once its delta-T model puts UT1 - UTC past -1 s, from then on
+    (2033-09-17, observed; checked to 2400). There it returns the day's 0h as UT1 exactly, which
+    the model's own UT1 isn't on any day before (observed)."""
+    day = date(1972, 1, 1)
+    while day < _SCAN_END:
+        _, jd_ut1 = swe.utc_to_jd(day.year, day.month, day.day, 0, 0, 0.0, swe.GREG_CAL)
+        if jd_ut1 == swe.julday(day.year, day.month, day.day, 0.0, swe.GREG_CAL):
+            return day
+        day += timedelta(days=1)
+    return None
+
+
+def _past_model_scale(end: date | None, what: str) -> DateOutsideLeapSeconds:
+    return DateOutsideLeapSeconds(
+        f"{what} cannot be read under UT1_FROM_DELTA_T: from {end}, Swiss Ephemeris's delta-T "
+        "model puts UT1 - UTC past -1 s, and it takes readings as UT1 instead of applying leap "
+        "seconds (conversions from TT go wrong from the afternoon before). That is the clock "
+        "convention: name clock_as_ut1"
+    )
 
 
 def _after_ut1_data(table: Ut1Table, what: str) -> DateOutsideUt1Data:

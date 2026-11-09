@@ -15,7 +15,7 @@ It's a calculation engine only: there's no web application, database or GUI.
 - **The nearest solar and lunar eclipses** before and after a birth.
 - **A proof of concept for fixed-star parans:** angular events and the gaps between them.
 
-Civil times come in four forms: UTC, a local time with an IANA zone, a local time with a stated offset, or local mean time. Ambiguous or nonexistent local times are refused, never guessed. Which aspect angles count is always yours to name. UT1 comes by default from IERS's measured values, up to 2026-10-10; after that, name another time scale (`--time-scale`).
+Civil times come in four forms: UTC, a local time with an IANA zone, a local time with a stated offset, or local mean time. Ambiguous or nonexistent local times are refused, never guessed. Which aspect angles count is always yours to name. UT1 comes by default from IERS's measured values, up to 2026-10-10; after that, name another time scale (`--time-scale`): Swiss Ephemeris's ΔT model up to 2033-09-16, the clock reading beyond.
 
 ## Documents
 

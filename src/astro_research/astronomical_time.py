@@ -29,7 +29,8 @@ class TimeScale(enum.Enum):
     """The UTC clock reading is used as UT1 (Immanuel does this, observed)."""
 
     UT1_FROM_DELTA_T = "ut1_from_delta_t"
-    """UTC -> TT exactly via leap seconds; UT1 = TT - delta-T (Swiss Ephemeris's model)."""
+    """UTC -> TT exactly via leap seconds; UT1 = TT - delta-T (Swiss Ephemeris's model). Refused
+    from 2033-09-17, where Swiss Ephemeris stops applying leap seconds."""
 
     UT1_FROM_IERS = "ut1_from_iers"
     """UTC -> TT exactly via leap seconds; UT1 = TT - delta-T, with delta-T from IERS's daily

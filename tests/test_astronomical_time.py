@@ -1,18 +1,21 @@
 """Time stage 2: resolved UTC instant -> Julian dates for Swiss Ephemeris, and the handle.
 
-The time-scale convention has no default yet (deliberately deferred), so every call names one.
+These tests name a time scale in every call. The IERS scale, the default, has its own module,
+test_ut1_iers.py.
 """
 
 import shutil
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 import swisseph
 
-from astro_research.astronomical_time import TimeScale
+from astro_research.astronomical_time import AstronomicalTime, TimeScale, Ut1Basis
 from astro_research.civil_time import ResolvedInstant, UtcTime, resolve
 from astro_research.ephemeris import (
+    DateOutsideEphemeris,
+    DateOutsideLeapSeconds,
     Ephemeris,
     EphemerisNotLoaded,
     StaleEphemeris,
@@ -75,6 +78,54 @@ def test_conventions_agree_before_1972(eph: Ephemeris, year: int) -> None:
     a = eph.time(instant(year, 6, 1), TimeScale.CLOCK_AS_UT1)
     b = eph.time(instant(year, 6, 1), TimeScale.UT1_FROM_DELTA_T)
     assert (a.jd_ut1, a.jd_tt, a.ut1_minus_utc_s) == (b.jd_ut1, b.jd_tt, b.ut1_minus_utc_s)
+
+
+# --- Where the model scale ends -----------------------------------------------------------
+
+MODEL = TimeScale.UT1_FROM_DELTA_T
+SWITCH_DAY = datetime(2033, 9, 17, tzinfo=UTC)
+
+
+def at_utc(eph: Ephemeris, utc: datetime, scale: TimeScale = MODEL) -> AstronomicalTime:
+    return eph.time(resolve(UtcTime(utc=utc), GREENWICH), scale)
+
+
+def test_the_model_scale_ends_where_swiss_ephemeris_stops_applying_leap_seconds(
+    eph: Ephemeris,
+) -> None:
+    # From 2033-09-17 Swiss Ephemeris's delta-T model puts UT1 - UTC past -1 s, so utc_to_jd
+    # assumes leap seconds are missing and takes the reading as UT1 (observed). Across that day
+    # one second of readings would be two of TT. The model scale refuses instead.
+    last = at_utc(eph, SWITCH_DAY - timedelta(seconds=1))
+    assert last.ut1_basis is Ut1Basis.DELTA_T_MODEL
+    assert last.ut1_minus_utc_s == pytest.approx(-1.0002, abs=0.0001)  # measured -1.000196
+    for utc in (SWITCH_DAY, datetime(2050, 1, 1, tzinfo=UTC)):
+        with pytest.raises(DateOutsideLeapSeconds, match="2033-09-17") as refused:
+            at_utc(eph, utc)
+        assert "clock_as_ut1" in str(refused.value)  # the scale that does what it would have
+    assert issubclass(DateOutsideLeapSeconds, DateOutsideEphemeris)
+
+
+def test_from_the_switch_the_clock_convention_is_what_swiss_ephemeris_did(eph: Ephemeris) -> None:
+    tt, ut1 = swisseph.utc_to_jd(2033, 9, 17, 0, 0, 0.0, swisseph.GREG_CAL)
+    clock = at_utc(eph, SWITCH_DAY, TimeScale.CLOCK_AS_UT1)
+    assert (clock.jd_ut1, clock.jd_tt) == (ut1, tt)  # observed: identical
+
+
+def test_near_the_switch_a_julian_date_converts_back_or_is_refused(eph: Ephemeris) -> None:
+    # jdet_to_utc tests for the switch at the instant, utc_to_jd at the date's 0h. So from
+    # 2033-09-16 15:59:27 UTC to the end of that day, the reading Swiss Ephemeris gives for a TT
+    # is a second early (measured). A reading that doesn't convert back to its TT is refused.
+    before = at_utc(eph, datetime(2033, 9, 16, 15, tzinfo=UTC))
+    back = eph.time_from_tt(before.jd_tt, MODEL)
+    assert abs((back.instant.utc - before.instant.utc).total_seconds()) < 1e-4
+    for utc in (datetime(2033, 9, 16, 16, tzinfo=UTC), SWITCH_DAY - timedelta(seconds=1)):
+        late = at_utc(eph, utc)  # the reading is accepted, but its TT has no consistent reading
+        with pytest.raises(DateOutsideLeapSeconds):
+            eph.time_from_tt(late.jd_tt, MODEL)
+    beyond = at_utc(eph, datetime(2034, 1, 1, tzinfo=UTC), TimeScale.CLOCK_AS_UT1)
+    with pytest.raises(DateOutsideLeapSeconds):
+        eph.time_from_tt(beyond.jd_tt, MODEL)
 
 
 # --- What gets recorded -------------------------------------------------------------------

@@ -428,8 +428,9 @@ def test_under_iers_an_eclipse_past_its_last_day_is_refused(eph: Ephemeris) -> N
         (scale, jd_tt)
         for scale in TimeScale
         for jd_tt in (2396910.0, 2446961.6423, 2460409.2620, 2597450.5)
-        # IERS has no UT1 for 2400; test_ut1_iers.py covers that refusal.
-        if not (scale is TimeScale.UT1_FROM_IERS and jd_tt == 2597450.5)
+        # In 2400 only the clock convention has a reading: IERS's table ends in 2026 and the
+        # model scale in 2033 (test_ut1_iers.py and test_astronomical_time.py cover those).
+        if not (scale is not TimeScale.CLOCK_AS_UT1 and jd_tt == 2597450.5)
     ],
 )
 def test_a_tt_julian_date_becomes_a_utc_reading(

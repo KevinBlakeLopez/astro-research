@@ -53,6 +53,7 @@ from astro_research.eclipses import (
 )
 from astro_research.geo import GeoPosition
 from astro_research.parans import (
+    CatalogueStar,
     Disc,
     FixedStar,
     HorizonConvention,
@@ -636,6 +637,28 @@ class Ephemeris:
             if jd_ut1 >= table.first_ut1:
                 return self.time_from_tt(table.tt_from_ut1(jd_ut1), time_scale)
         return self.time_from_tt(jd_ut1 + _delta_t_days(jd_ut1), time_scale)
+
+    def star_catalogue(self) -> tuple[CatalogueStar, ...]:
+        """Each name and designation of the verified star catalogue once, in the order they first
+        appear, with the star's magnitude. The file repeats some records exactly (Regulus is on
+        two lines), and its repeats agree on magnitude (observed)."""
+        self._require_active()
+        entries: dict[tuple[str, str], CatalogueStar] = {}
+        text = (self._folder / "sefstars.txt").read_text(encoding="latin-1")
+        for line in text.splitlines():
+            fields = [field.strip() for field in line.split(",")]
+            if line.startswith("#") or len(fields) < 14:
+                continue
+            name, designation = fields[0], "," + fields[1]
+            entries.setdefault(
+                (name, designation),
+                CatalogueStar(
+                    name=name,
+                    star=FixedStar(designation=designation),
+                    magnitude=float(fields[13]),
+                ),
+            )
+        return tuple(entries.values())
 
     def star_name(self, star: FixedStar) -> str:
         """The catalogue's name for `star`, e.g. "Regulus,alLeo"."""

@@ -104,6 +104,15 @@ class FixedStar:
 
 
 @dataclass(frozen=True, kw_only=True)
+class CatalogueStar:
+    """One name and designation of the star catalogue, with the star's visual magnitude."""
+
+    name: str  # e.g. "Regulus"; a star can have several (Aldebaran and Rohini are both alTau)
+    star: FixedStar
+    magnitude: float
+
+
+@dataclass(frozen=True, kw_only=True)
 class AngularEvent:
     point: Body | FixedStar
     event: HorizonEvent

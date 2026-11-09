@@ -289,6 +289,8 @@ How it behaves:
   Refined events agree with ERFA within 7.3 ms, close to the 7 ms resolution of Swiss Ephemeris's bisection.
 - **Bodies Swiss Ephemeris says don't rise or set** are listed in `no_rise_or_set`. It can't tell circumpolar from never rising, and the result doesn't either. Their transits are kept, and a body that rises again later in the window is still followed.
 - **Stars** are named by catalogue designation (e.g. `,alLeo`), because names repeat in the catalogue.
+  - **The list:** `Ephemeris.star_catalogue()` gives each name and designation of the verified catalogue once, in file order, with the star's magnitude. That's 1,338 entries over 1,120 designations: the file repeats some records exactly, and gives some stars more than one name (Aldebaran and Rohini are both `,alTau`).
+  - **Swiss Ephemeris's lookup is lenient in one observed case.** `,zePscB` isn't in the file, yet it's found as Revati (`,zePsc`), and `,zePscA` comes back under `,zePsc` too (same coordinates). Other near misses tried (`,alLeoX`, `,alLe`, `,alleo`, `,alTauZ`) were refused. So callers check designations against the catalogue exactly rather than by looking them up.
 - **Under `UT1_FROM_IERS`**, each search is given IERS's ΔT at its start (§2.2). ΔT changes by under 5 ms a day (since 1972, measured), and a refining search starts 3 minutes before its event.
 - **Refusals.** Windows outside the data files and the poles are refused. Searches run past the window's end, but nothing at or after the end is turned into a time, so a window may end on the UT1 table's last day.
 

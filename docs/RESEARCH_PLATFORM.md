@@ -25,7 +25,7 @@ Django owns the schema (`research_platform/models.py` and its migrations). The w
 
 ## The research layer
 
-It's built in this order: what's known about subjects (variables), derived configurations (features), and hypotheses with their results, all below. The hypotheses' own pages come next.
+It's built in this order: what's known about subjects (variables), derived configurations (features), and hypotheses with their results and pages, all below.
 
 **Researchers fill in forms; they don't write code.** Most astrologers aren't developers, and on a hosted site, running researchers' own code would let them run anything on the server. So features and analyses each come from a registry written as code by the platform's maintainers. A researcher chooses a kind and fills in its settings.
 
@@ -77,7 +77,7 @@ The first analysis is **Fisher's exact test** (`fisher-exact`), on the 2×2 tabl
 
 **The platform records, but doesn't blind you to the data.** A feature's page shows its values for a run. For a confirmatory test, register the hypothesis on a run of data you haven't looked at.
 
-- **Not yet:** the hypotheses' pages (entering them in the admin for now), corrections for running several tests (Bonferroni, Holm), and further analyses: a permutation test, and a comparison with expected frequencies from a control, as Gauquelin made with shuffled birth times and dates.
+- **Not yet:** corrections for running several tests (Bonferroni, Holm), and further analyses: a permutation test, and a comparison with expected frequencies from a control, as Gauquelin made with shuffled birth times and dates.
 
 **Records, field by field.** A record's `reading` is ISO 8601 text. It's aware (`+00:00`) for UTC and the naive wall-clock reading otherwise, since a Django `DateTimeField` can't hold a naive reading while times are kept zone-aware. The other fields are `zone`, `utc_offset_us` (the offset of an offset time, or the stated offset of a zoned one), `accept_pre_1970_tzdb`, `latitude`, `longitude`, `elevation_m`, `time_resolution` and `stated_uncertainty_us`.
 
@@ -245,6 +245,12 @@ It runs on this machine only: it answers on 127.0.0.1 and localhost, and every p
   - **Values** are written as Python's repr, which Python's `float()` reads back exactly. pandas' documentation says its default number parser isn't always exact and `float_precision="round_trip"` is; that hasn't been checked here.
   - **A stored document this engine can't read** refuses the table with a 422 and the reason, before anything is sent, rather than stopping a download partway. So every document is read twice: once to check it, then a batch of records at a time to write the rows.
   - **Cost:** for 500 charts, each table took 2.5–2.8 s, 1.2 s of it before the first byte. Pairs came to 68,000 rows and 16.2 MiB, points to 8,500 rows and 1.5 MiB (measured).
+- **Hypotheses** (`/hypotheses/`, linked from every page's header) lists each hypothesis by name with its feature, group, run, number of results and latest result, and how many results are recorded in all, so the number of tests run is in view.
+  - **Adding one** (`/hypotheses/new/`): choose its analysis, then fill in the hypothesis's form and the analysis's settings, a POST with the CSRF check. The form offers only what the analysis takes: yes/no features, groups such as `profession: athlete` or `left-handed: yes` (never a number variable), and finished runs. Directions are in words.
+  - **A hypothesis's page** (`/hypotheses/<id>/`) shows its statement and definition, with links to its feature and run. Its **Run** button is a POST, labelled "Run (locks this hypothesis)" until the first result and "Run again" after. A run the analysis refuses shows why, with a 422, and records nothing.
+  - **Each result,** newest first, shows its table labelled by group and feature, each row's frequency, the odds ratio, the p-value as a decimal and a fraction, the verdict, how many records were refused or had no value, the analysis code's SHA-256 (first 12 digits) and the engine version. Its inputs download as `result-<id>-inputs.csv` (`record_id`, `subject`, `feature`, `in_group`, booleans as `true` or `false`), as stored.
+  - **Editing** (`/hypotheses/<id>/edit/`) uses the same form until the hypothesis has a result; after that it's refused, with the reason. Deleting is in the admin, for a hypothesis without results.
+  - A feature's page lists the hypotheses that use it, and a run's page the hypotheses on it.
 - **Features** (`/features/`, linked from every page's header) lists each feature by name, with its kind and definition in words.
   - **Adding one** (`/features/new/`): choose its kind, then fill in that kind's form, which is a POST with Django's CSRF check. A form it can't save shows why, and keeps what was entered.
   - **A feature's page** (`/features/<id>/`) shows its definition. For a finished run you choose (`?run=<id>`), it shows each charted record's value, the counts (every possible value, zeros included) and how many records were refused. A stored document this engine can't read shows why, with a 422.
@@ -331,18 +337,13 @@ cd research-platform && RESEARCH_DEBUG=1 uv run python manage.py runserver 127.0
 54. Follow the run from step 31. Expect each of the dataset's two charted records with yes or no, the counts below "Run …", and "1 refused, with no value".
 55. Add another contact feature with `mars` ticked among its own other points. Expect "a point can't be in contact with itself" above the form, with what you entered still there.
 56. Add a **sign** feature for `sun`, and show it for step 31's run. Expect all 12 signs in the counts, with the records' signs counted.
-57. In the admin, add a hypothesis named `Mars on an angle in athletes`:
-    - **feature:** step 53's;
-    - **variable and category:** `profession` and `profession: athlete`;
-    - **run:** step 31's;
-    - **analysis:** `fisher-exact`;
-    - **settings:** `{"alternative": "greater", "alpha": 0.05}`;
-    - **statement:** any.
-
-    Save it, and expect it saved. Then change the category to empty and save. Expect "name which of profession's categories is the group".
-58. Run `run_hypothesis "Mars on an angle in athletes"`. Expect "subject '…' has 2 records in run …", since steps 1 and 7 are one subject's records, and no result under **Analysis runs** in the admin.
-59. Add a dataset `one-each` with the records of steps 1 and 9, run it from its page with `major`, set the hypothesis's run to that one in the admin, and run the command again. Expect "result 1 of 'Mars on an angle in athletes': p = 1 (1), above 0.05". Only step 1's subject has a profession, so the table has one subject.
-60. In the admin, change the hypothesis's statement and save. Expect "Mars on an angle in athletes has results, so it can't change".
+57. Follow **Hypotheses** in the header, then **Add a hypothesis**. Expect a choice of **Fisher's exact test**. Choose it. Expect only yes/no features (step 53's, not step 56's sign), groups such as `profession: athlete`, and finished runs.
+58. Name it `Mars on an angle in athletes`, write a statement, and choose step 53's feature, `profession: athlete`, step 31's run, **more common in the group** and `0.05`. Press **Add**. Expect its page, with the definition in words, **Edit it**, and a **Run (locks this hypothesis)** button.
+59. Press the button. Expect "It can't be run: subject '…' has 2 records in run …", since steps 1 and 7 are one subject's records, "Nothing was recorded", and still no results.
+60. Add a dataset `one-each` with the records of steps 1 and 9, run it from its page with `major`, then **Edit** the hypothesis to use that run. Press **Run (locks this hypothesis)**. Expect a result with its table (one subject, in the group), "p = 1 (1), above 0.05", "0 refused, 1 with no value", and the button now **Run again**. Only step 1's subject has a profession.
+61. Expect "It has results, so it's locked", and no **Edit it**. Open the hypothesis's address with `edit/` at the end. Expect "Mars on an angle in athletes has results, so it can't change".
+62. Follow **Its inputs (CSV)**. Expect `result-<id>-inputs.csv` with one row: step 1's record, `true` or `false` for the feature, and `true` for the group.
+63. Open **Hypotheses**. Expect the hypothesis with 1 result and its p-value, and "1 result recorded in all". The command `run_hypothesis "Mars on an angle in athletes"` runs it too, and prints the result.
 
 ## The desktop app
 
@@ -370,7 +371,7 @@ At each launch it:
 
 **Checking it on a Mac.** The tests start the app's server and fetch pages and downloads through it, but they can't open the window. These steps check what only the window shows:
 
-1. Run the command above. Expect a window titled "Astro Research" showing the datasets page, with **Datasets** and **Admin** in the header and no **Log out**. Expect a folder `~/Library/Application Support/Astro Research/` with `research.sqlite3` and `.secret_key` in it.
+1. Run the command above. Expect a window titled "Astro Research" showing the datasets page, with **Datasets**, **Features**, **Hypotheses** and **Admin** in the header and no **Log out**. Expect a folder `~/Library/Application Support/Astro Research/` with `research.sqlite3` and `.secret_key` in it.
 2. Follow **Admin**. Expect the admin, logged in as `local`, without having been asked for a password.
 3. Add a subject, a source, a record and a dataset as in the browser steps 1 and 30, then run the dataset from its page with `major`. Expect the run's page.
 4. Follow **the outcomes (CSV)**. Expect a dialog asking where to save `run-<id>-outcomes.csv`, and the file saved there.

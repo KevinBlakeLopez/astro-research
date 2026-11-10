@@ -4,6 +4,7 @@
 <h1>{{ feature.name }}</h1>
 <p>A {{ kind.name }} feature: {{ feature.describe }}. <a href="{% url 'features' %}">All features</a></p>
 {% if feature.description %}<p>{{ feature.description|linebreaksbr }}</p>{% endif %}
+{% with used=feature.hypotheses.all %}{% if used %}<p>Hypotheses using it: {% for each in used %}<a href="{% url 'hypothesis' each.pk %}">{{ each.name }}</a>{% if not forloop.last %} · {% endif %}{% endfor %}</p>{% endif %}{% endwith %}
 
 <h2>Its values in a run</h2>
 {% if runs %}

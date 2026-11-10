@@ -1,0 +1,11 @@
+<h3>Result {{ result.pk }}, {{ result.ran_at|date:"Y-m-d H:i:s T" }}</h3>
+<table>
+  <thead><tr><th class="name"></th><th>Feature yes</th><th>Feature no</th><th class="name">With the feature</th></tr></thead>
+  <tbody>
+    <tr><th class="name">In the group</th><td data-cell="group-yes">{{ shown.group.yes }}</td><td data-cell="group-no">{{ shown.group.no }}</td><td class="name">{{ shown.group.frequency }}</td></tr>
+    <tr><th class="name">The rest</th><td data-cell="rest-yes">{{ shown.rest.yes }}</td><td data-cell="rest-no">{{ shown.rest.no }}</td><td class="name">{{ shown.rest.frequency }}</td></tr>
+  </tbody>
+</table>
+<p>p = {{ shown.p_value }}, {{ shown.verdict }}. Odds ratio {{ shown.odds_ratio }}.</p>
+<p>Left out: {{ result.excluded.refused|length }} refused, {{ result.excluded.missing|length }} with no value. <a href="{% url 'result-inputs-csv' result.pk %}">Its inputs (CSV)</a></p>
+<p>Analysis code <code>{{ result.analysis_sha256|slice:":12" }}</code>, engine {{ result.engine_version }}.</p>

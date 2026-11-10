@@ -1,5 +1,6 @@
 """The platform's pages: the admin, logging in and out, a record's chart, its sensitivity,
-eclipses and parans, comparisons, datasets with their runs and stored charts, and features."""
+eclipses and parans, comparisons, datasets with their runs and stored charts, features, and
+hypotheses with their results."""
 
 from django.contrib import admin
 from django.contrib.auth import views as auth_views
@@ -9,6 +10,7 @@ from research_platform import (
     desktop_views,
     eclipses_views,
     features_views,
+    hypotheses_views,
     parans_views,
     runs_views,
     sensitivity_views,
@@ -83,4 +85,14 @@ urlpatterns = [
     path("features/<int:pk>/", features_views.feature, name="feature"),
     path("desktop/login/<str:token>/", desktop_views.login, name="desktop-login"),
     re_path(r"^static/(?P<path>.*)$", desktop_views.static, name="desktop-static"),
+    path("hypotheses/", hypotheses_views.hypotheses_list, name="hypotheses"),
+    path("hypotheses/new/", hypotheses_views.hypothesis_new, name="hypothesis-new"),
+    path("hypotheses/<int:pk>/", hypotheses_views.hypothesis, name="hypothesis"),
+    path("hypotheses/<int:pk>/edit/", hypotheses_views.hypothesis_edit, name="hypothesis-edit"),
+    path("hypotheses/<int:pk>/run/", hypotheses_views.hypothesis_run, name="hypothesis-run"),
+    path(
+        "results/<int:pk>/inputs.csv",
+        hypotheses_views.result_inputs_csv,
+        name="result-inputs-csv",
+    ),
 ]

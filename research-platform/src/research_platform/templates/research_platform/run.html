@@ -12,6 +12,8 @@
 <p>This run hasn't finished. A run started from the dataset's page finishes before its page opens, so this one is either still running under <code>compute_dataset</code> or was stopped.</p>
 {% endif %}
 
+{% with tested=run.hypotheses.all %}{% if tested %}<p>Hypotheses on this run: {% for each in tested %}<a href="{% url 'hypothesis' each.pk %}">{{ each.name }}</a>{% if not forloop.last %} · {% endif %}{% endfor %}</p>{% endif %}{% endwith %}
+
 <h2>What it ran with</h2>
 <table>
   <tr><th class="name">Status</th><td class="name">{{ run.status }}</td></tr>

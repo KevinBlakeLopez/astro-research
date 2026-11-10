@@ -1,0 +1,25 @@
+{% extends "research_platform/base.html" %}
+{% block title %}Hypotheses{% endblock %}
+{% block content %}
+<h1>Hypotheses</h1>
+<p>{{ total }} result{{ total|pluralize }} recorded in all. Every result is kept, null ones included, so the number of tests run is always in view. <a href="{% url 'hypothesis-new' %}">Add a hypothesis</a></p>
+{% if rows %}
+<div class="scroll"><table>
+  <thead><tr><th class="name">Hypothesis</th><th class="name">Feature</th><th class="name">Outcome group</th><th class="name">Run</th><th>Results</th><th class="name">Latest</th></tr></thead>
+  <tbody>
+  {% for row in rows %}
+  <tr data-hypothesis="{{ row.hypothesis.pk }}">
+    <td class="name"><a href="{% url 'hypothesis' row.hypothesis.pk %}">{{ row.hypothesis.name }}</a></td>
+    <td class="name">{{ row.hypothesis.feature.name }}</td>
+    <td class="name">{{ row.group }}</td>
+    <td class="name">run {{ row.hypothesis.run.pk }} of {{ row.hypothesis.run.dataset.name }}</td>
+    <td>{{ row.count }}</td>
+    <td class="name">{{ row.latest|default:"none yet" }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% else %}
+<p>None yet.</p>
+{% endif %}
+{% endblock %}

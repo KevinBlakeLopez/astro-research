@@ -1,0 +1,28 @@
+{% extends "research_platform/base.html" %}
+{% block title %}Hypothesis: {{ hypothesis.name }}{% endblock %}
+{% block content %}
+<h1>{{ hypothesis.name }}</h1>
+<p>{{ hypothesis.statement|linebreaksbr }}</p>
+<table>
+  <tr><th class="name">Feature</th><td class="name"><a href="{% url 'feature' hypothesis.feature.pk %}">{{ hypothesis.feature.name }}</a>: {{ feature_described }}</td></tr>
+  <tr><th class="name">Outcome group</th><td class="name">{{ group }}</td></tr>
+  <tr><th class="name">Calculation run</th><td class="name"><a href="{% url 'run' hypothesis.run.pk %}">run {{ hypothesis.run.pk }} of {{ hypothesis.run.dataset.name }}</a></td></tr>
+  <tr><th class="name">Analysis</th><td class="name">{{ analysis.title }}. {{ described }}</td></tr>
+</table>
+{% if locked %}
+<p>It has results, so it's locked: its definition, and its feature's, can't change.</p>
+{% else %}
+<p><a href="{% url 'hypothesis-edit' hypothesis.pk %}">Edit it</a>, until it has a result.</p>
+{% endif %}
+{% if refused %}
+<div class="refusal" data-error="analysis"><p><strong>It can't be run:</strong> {{ refused }}</p><p>Nothing was recorded.</p></div>
+{% endif %}
+<form method="post" action="{% url 'hypothesis-run' hypothesis.pk %}">{% csrf_token %}<button type="submit">{% if locked %}Run again{% else %}Run (locks this hypothesis){% endif %}</button></form>
+
+<h2>Results, newest first</h2>
+{% for each in results %}
+<section data-result="{{ each.run.pk }}">{% include analysis.result_template with result=each.run shown=each.shown %}</section>
+{% empty %}
+<p>None yet.</p>
+{% endfor %}
+{% endblock %}

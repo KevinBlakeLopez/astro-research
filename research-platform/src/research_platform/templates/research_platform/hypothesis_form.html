@@ -1,0 +1,24 @@
+{% extends "research_platform/base.html" %}
+{% block title %}{% if hypothesis.pk %}Edit {{ hypothesis.name }}{% else %}Add a hypothesis{% endif %}{% endblock %}
+{% block content %}
+<h1>{% if hypothesis.pk %}Edit {{ hypothesis.name }}{% else %}Add a hypothesis{% endif %}</h1>
+<p><a href="{% url 'hypotheses' %}">All hypotheses</a>{% if hypothesis.pk %} · <a href="{% url 'hypothesis' hypothesis.pk %}">Back to it</a>{% endif %}</p>
+{% if error %}{% include "research_platform/request_error.html" %}{% endif %}
+{% if form %}
+<h2>{{ analysis.title }}</h2>
+<p>{{ analysis.explanation }}</p>
+<form class="settings" method="post" action="{% if hypothesis.pk %}{% url 'hypothesis-edit' hypothesis.pk %}{% else %}{% url 'hypothesis-new' %}?analysis={{ analysis.name }}{% endif %}">
+  {% csrf_token %}
+  {{ form.as_p }}
+  {{ settings_form.as_p }}
+  <button type="submit">{% if hypothesis.pk %}Save{% else %}Add{% endif %}</button>
+</form>
+<p>Only what this analysis can take is offered: yes/no features, a category of a category variable or yes of a yes/no one, and finished runs. Choose these before looking at the run's values if the test is to confirm anything.</p>
+{% elif analyses %}
+<h2>Choose its analysis</h2>
+<ul>
+  {% for each in analyses %}<li><a href="{% url 'hypothesis-new' %}?analysis={{ each.name }}">{{ each.title }}</a>: {{ each.explanation }}</li>
+  {% endfor %}
+</ul>
+{% endif %}
+{% endblock %}

@@ -8,6 +8,7 @@ Zone behaviour asserted here was first observed with zoneinfo against tzdata 202
 import importlib.metadata
 import importlib.resources
 import pickle
+import re
 import zoneinfo
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta, timezone
@@ -98,10 +99,12 @@ def test_reports_the_pinned_tzdata_package_version() -> None:
     assert resolve(time, NEW_YORK).tzdata_version == importlib.metadata.version("tzdata")
 
 
-@pytest.mark.parametrize("zone", ["Mars/Olympus_Mons", "../../etc/passwd", ""])
-def test_unknown_zone(zone: str) -> None:
-    with pytest.raises(UnknownTimeZone):
-        resolve(ZonedLocalTime(local=datetime(2023, 7, 1, 12, 0), zone=zone), NEW_YORK)
+@pytest.mark.parametrize("zone", ["Mars/Olympus_Mons", "../../etc/passwd", "", "europe/paris"])
+def test_an_unknown_zone_is_refused_when_the_time_is_made(zone: str) -> None:
+    # Before it's resolved: a misspelt zone is caught where it's entered. Zone names are
+    # case-sensitive, as tzdata's are.
+    with pytest.raises(UnknownTimeZone, match=re.escape(f"{zone!r} is not a time zone in tzdata")):
+        ZonedLocalTime(local=datetime(2023, 7, 1, 12, 0), zone=zone)
 
 
 # --- Zone rules: ambiguous (repeated) wall-clock times ------------------------------------

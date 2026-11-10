@@ -71,6 +71,10 @@ def test_a_record_the_engine_refuses_is_not_valid(subject: Subject, source: Sour
     finer.reading = "1972-06-30T23:31:00"  # finer than its stated resolution, an hour
     with pytest.raises(ValidationError, match="resolution"):
         finer.full_clean()
+    misspelt = Record.from_birth_record(BIRTH_RECORDS["zoned"], subject=subject, source=source)
+    misspelt.zone = "Europe/Londn"
+    with pytest.raises(ValidationError, match="'Europe/Londn' is not a time zone in tzdata"):
+        misspelt.full_clean()
 
 
 MISMATCHED_FIELDS: dict[str, tuple[str, dict[str, object]]] = {

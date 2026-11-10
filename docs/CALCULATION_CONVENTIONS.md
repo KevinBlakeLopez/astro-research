@@ -41,7 +41,7 @@ A birth time comes in one of four forms, each its own input type:
 | Input | Meaning | Offset source |
 |---|---|---|
 | `UtcTime(utc)` | A UTC instant. Any tzinfo with a zero offset is accepted. | Given. |
-| `ZonedLocalTime(local, zone, stated_utc_offset=None, accept_pre_1970_tzdb=False)` | A wall-clock reading and an IANA zone. | tzdb rules, from the pinned `tzdata` package (2026.6), never the operating system's database. The version is recorded in each result that uses it. |
+| `ZonedLocalTime(local, zone, stated_utc_offset=None, accept_pre_1970_tzdb=False)` | A wall-clock reading and an IANA zone. | tzdb rules, from the pinned `tzdata` package (2026.6), never the operating system's database. The version is recorded in each result that uses it. A zone the package doesn't have, names being case-sensitive, is refused as soon as the time is made (`UnknownTimeZone`), so a misspelt zone is caught where it's entered. |
 | `OffsetLocalTime(local, utc_offset)` | A wall-clock reading and the offset the source states. | Stated. |
 | `LocalMeanTime(local)` | Local mean time at the birthplace. | The birthplace's longitude × 240 s per degree. |
 

@@ -3,8 +3,9 @@
 `python -m research_platform.desktop` opens the platform in its own window. It keeps its data
 in the system's folder for app data (`app_data_directory`), applies database migrations at every
 launch, and makes one local account with no password. The window logs in with a secret made at
-each launch, which works once; outside the app no such link works. The server answers only on
-127.0.0.1, at a free port, and serves the platform's own static files (HTMX) itself.
+each launch, which works once and opens the home page; outside the app no such link works. The
+server answers only on 127.0.0.1, at a free port, and serves the platform's own static files
+(HTMX) itself.
 
 The database is SQLite unless RESEARCH_DATABASE=postgresql (`configuration.database`), and the
 data folder is RESEARCH_DATA_DIR or else the platform's own folder, where its session key has
@@ -221,7 +222,7 @@ def test_a_launch_prepares_the_data_folder_and_a_second_changes_nothing(tmp_path
 def test_the_launch_link_logs_the_window_in_once(client: Client, armed: str) -> None:
     link = reverse("desktop-login", args=[armed])
     response = client.get(link)
-    assert response.status_code == 302 and response["Location"] == reverse("datasets")
+    assert response.status_code == 302 and response["Location"] == reverse("home")
     shown = client.get(reverse("datasets"))
     assert shown.status_code == 200
     user = shown.wsgi_request.user

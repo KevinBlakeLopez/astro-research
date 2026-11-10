@@ -1,0 +1,53 @@
+{% extends "research_platform/base.html" %}
+{% block title %}Research platform{% endblock %}
+{% block content %}
+<h1>Research platform</h1>
+{% if empty %}
+<p>Nothing here yet. Start by <a href="{% url 'admin:research_platform_record_add' %}">adding a record</a> in the admin, or import AstroChart Bridge files with <code>python manage.py import_charts</code>.</p>
+{% else %}
+<p><a href="{% url 'admin:research_platform_record_add' %}">Add a record</a> in the admin.</p>
+{% endif %}
+
+<ul class="places">
+  {% for place in places %}
+  <li><a data-place="{{ place.name }}" href="{% url place.name %}">{{ place.label }} <span class="count">{{ place.count }}</span></a></li>
+  {% endfor %}
+</ul>
+
+<h2>Latest runs</h2>
+{% if runs %}
+<div class="scroll"><table>
+  <thead><tr><th class="name">Run</th><th class="name">Dataset</th><th class="name">Status</th><th class="name">Started</th></tr></thead>
+  <tbody>
+  {% for run in runs %}
+  <tr data-run="{{ run.pk }}">
+    <td class="name"><a href="{% url 'run' run.pk %}">Run {{ run.pk }}</a></td>
+    <td class="name"><a href="{% url 'dataset' run.dataset.pk %}">{{ run.dataset.name }}</a></td>
+    <td class="name">{{ run.status }}</td>
+    <td class="name">{{ run.started_at|date:"Y-m-d H:i T" }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% else %}
+<p>None yet. Runs are started from a <a href="{% url 'datasets' %}">dataset's page</a>.</p>
+{% endif %}
+
+<h2>Latest results</h2>
+{% if results %}
+<div class="scroll"><table>
+  <thead><tr><th class="name">Hypothesis</th><th class="name">Result</th><th class="name">Ran</th></tr></thead>
+  <tbody>
+  {% for latest in results %}
+  <tr data-result="{{ latest.result.pk }}">
+    <td class="name"><a href="{% url 'hypothesis' latest.result.hypothesis.pk %}">{{ latest.result.hypothesis.name }}</a></td>
+    <td class="name">{{ latest.summary }}</td>
+    <td class="name">{{ latest.result.ran_at|date:"Y-m-d H:i T" }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% else %}
+<p>None yet. Hypotheses are stated and run on the <a href="{% url 'hypotheses' %}">hypotheses page</a>.</p>
+{% endif %}
+{% endblock %}

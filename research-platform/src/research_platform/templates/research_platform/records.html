@@ -1,0 +1,34 @@
+{% extends "research_platform/base.html" %}
+{% block title %}Records{% endblock %}
+{% block content %}
+<h1>Records</h1>
+<form class="settings" method="get">
+  <label>Subject <input name="q" value="{{ query }}" placeholder="part of a subject's label"></label>
+  <button type="submit">Find</button>
+</form>
+<p>{{ total }} record{{ total|pluralize }}{% if query %} of a subject matching “{{ query }}” · <a href="{% url 'records' %}">All records</a>{% endif %} · <a href="{% url 'admin:research_platform_record_add' %}">Add a record</a></p>
+{% if records %}
+<div class="scroll"><table>
+  <thead><tr><th class="name">Subject</th><th class="name">Reading</th><th class="name">Zone</th><th class="name">Source</th><th class="name">Chart</th><th class="name">In datasets</th></tr></thead>
+  <tbody>
+  {% for record in records %}
+  <tr data-record="{{ record.pk }}">
+    <td class="name"><a href="{% url 'admin:research_platform_record_change' record.pk %}">{{ record.subject.label }}</a></td>
+    <td class="name">{{ record.reading }}</td>
+    <td class="name">{{ record.zone|default:record.get_time_kind_display }}</td>
+    <td class="name">{{ record.source.citation }}</td>
+    <td class="name"><a href="{% url 'record-chart' record.pk %}">Chart</a></td>
+    <td class="name">{% for dataset in record.datasets.all %}<a href="{% url 'dataset' dataset.pk %}">{{ dataset.name }}</a>{% if not forloop.last %}, {% endif %}{% empty %}none{% endfor %}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% if page.paginator.num_pages > 1 %}
+<p class="pages">{% if previous %}<a href="{{ previous }}">← Previous</a> · {% endif %}Page {{ page.number }} of {{ page.paginator.num_pages }}{% if next %} · <a href="{{ next }}">Next →</a>{% endif %}</p>
+{% endif %}
+{% elif query %}
+<p>No records match.</p>
+{% else %}
+<p>No records yet.</p>
+{% endif %}
+{% endblock %}

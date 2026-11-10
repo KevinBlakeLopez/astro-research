@@ -1,0 +1,1 @@
+<p class="up"><a href="{% url 'records' %}">All records</a>{% with datasets=record.datasets.all %}{% if datasets %} · In {% for dataset in datasets %}<a href="{% url 'dataset' dataset.pk %}">{{ dataset.name }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}{% endif %}{% endwith %}</p>

@@ -1,7 +1,7 @@
 """The desktop app's own views: the window's login, and the platform's static files.
 
 The launcher arms a secret made at each launch, and the window opens the link holding it, which
-logs in the local account once and opens the datasets page. A used, wrong or unarmed link is
+logs in the local account once and opens the home page. A used, wrong or unarmed link is
 not found; a wrong guess leaves the right link working. The local account is an admin with no
 usable password, so nothing but the app's window can log in as it.
 
@@ -56,7 +56,7 @@ def login(request: HttpRequest, token: str) -> HttpResponse:
             raise Http404("no such login link")
         _armed = None  # it works once
     log_in(request, local_user(), backend="django.contrib.auth.backends.ModelBackend")
-    return redirect("datasets")
+    return redirect("home")
 
 
 def static(request: HttpRequest, path: str) -> HttpResponseBase:

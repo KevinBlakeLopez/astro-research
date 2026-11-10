@@ -310,7 +310,14 @@ def run_pairs_csv(request: HttpRequest, pk: int) -> HttpResponseBase:
 @login_required
 def stored_chart(request: HttpRequest, key: str) -> HttpResponse:
     stored = get_object_or_404(StoredChart, pk=key)
-    context: dict[str, object] = {"stored": stored, "running_version": ENGINE_VERSION}
+    outcomes = stored.outcomes.select_related("run__dataset", "record__subject").order_by(
+        "run__pk", "record__pk"
+    )
+    context: dict[str, object] = {
+        "stored": stored,
+        "running_version": ENGINE_VERSION,
+        "outcomes": outcomes,  # the runs and records that stored it
+    }
     try:
         chart = stored.chart()
     except InvalidChartDocument as error:

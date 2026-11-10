@@ -3,6 +3,7 @@
 {% block title %}Eclipses: {{ record.subject }}{% endblock %}
 {% block content %}
 <h1>Nearest eclipses: {{ record.subject }}, {{ record.reading }}{% if record.zone %} {{ record.zone }}{% endif %}</h1>
+{% include "research_platform/record_links.html" %}
 <p><a href="{% url 'record-chart' record.pk %}?{{ query }}">The chart</a> · <a href="{% url 'admin:research_platform_record_change' record.pk %}">Edit the record</a></p>
 
 {% if error %}{% include "research_platform/request_error.html" %}{% endif %}

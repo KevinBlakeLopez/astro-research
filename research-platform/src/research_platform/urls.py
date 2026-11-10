@@ -11,6 +11,7 @@ from research_platform import (
     eclipses_views,
     features_views,
     hypotheses_views,
+    nav_views,
     parans_views,
     runs_views,
     sensitivity_views,
@@ -19,6 +20,8 @@ from research_platform import (
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    path("", nav_views.home, name="home"),
+    path("records/", nav_views.records, name="records"),
     path("login/", auth_views.LoginView.as_view(), name="login"),
     path("logout/", auth_views.LogoutView.as_view(), name="logout"),
     path("records/<int:pk>/chart/", views.record_chart, name="record-chart"),

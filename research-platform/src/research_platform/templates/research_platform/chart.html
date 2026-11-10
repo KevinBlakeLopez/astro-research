@@ -3,6 +3,7 @@
 {% block title %}Chart: {{ record.subject }}{% endblock %}
 {% block content %}
 <h1>{{ record.subject }}: {{ record.reading }}{% if record.zone %} {{ record.zone }}{% endif %}</h1>
+{% include "research_platform/record_links.html" %}
 <p>Source: {{ record.source }} · <a href="{% url 'admin:research_platform_record_change' record.pk %}">Edit the record</a> ·
   <a href="{% url 'record-sensitivity' record.pk %}?{{ request.GET.urlencode }}">Birth-time sensitivity</a> ·
   <a href="{% url 'record-eclipses' record.pk %}?{{ request.GET.urlencode }}">Nearest eclipses</a> ·

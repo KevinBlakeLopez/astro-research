@@ -3,6 +3,9 @@
 {% block content %}
 <h1>Stored chart</h1>
 <p>Calculation key <code>{{ stored.calculation_key }}</code>, stored {{ stored.stored_at|date:"Y-m-d H:i:s T" }}</p>
+{% if outcomes %}
+<p class="up">Stored for {% for outcome in outcomes %}<a href="{% url 'record-chart' outcome.record.pk %}">{{ outcome.record.subject.label }}</a> in <a href="{% url 'run' outcome.run.pk %}">run {{ outcome.run.pk }}</a> of <a href="{% url 'dataset' outcome.run.dataset.pk %}">{{ outcome.run.dataset.name }}</a>{% if not forloop.last %}; {% endif %}{% endfor %}</p>
+{% endif %}
 {% if refusal %}
 <div class="refusal">
   <p><strong>This engine can't read the stored document: <code>{{ refusal.name }}</code></strong></p>

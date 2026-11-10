@@ -167,6 +167,15 @@ A later version of the format is refused (`unsupported-version`) until the reade
 
 It runs on this machine only: it answers on 127.0.0.1 and localhost, and every page needs a login.
 
+- **The home page** (`/`) shows the platform's places, records, datasets, features and hypotheses, each with how many it holds, and the five latest runs and hypothesis results, each a link. With no records yet, it says where to start. The header links home and to each place, and the admin's **View site** leads here.
+- **The records page** (`/records/`) lists every record, 100 at a time, by subject: its reading, zone and source, and links to its chart and the datasets holding it. A search finds records by part of a subject's label.
+  - **Ignoring case, accented letters included.** That's done in Python with `casefold`, since SQLite's own matching found "Émile" from `ÉMILE` but not from `émile` (observed). The order, by subject ignoring case, is Python's too, so it's the same on SQLite and PostgreSQL.
+  - **Only the page's own records** are then read in full.
+- **No dead ends.** Every page links somewhere besides the header:
+  - a record's chart, sensitivity, eclipses and parans pages link to the records page and the datasets holding the record;
+  - a stored chart links to the records and runs it was stored for.
+
+  A test follows every link from the home page and fails on a page that doesn't open or has no way on.
 - **The admin** (`/admin/`) is where subjects, sources, records and datasets are entered. Saving a record asks the engine to build it, so the engine's reason for refusing one shows on the form. Runs, outcomes and stored charts can be looked at but not added, changed or deleted. A record's admin page links to its chart, and a dataset's to its page. Variables are entered here too: a variable's page lists its categories and every subject's value, and a subject's page lists its values.
 - **A record's chart** (`/records/<id>/chart/`) is computed on request, under the settings in its address: `aspects` (degrees and/or `major`, `octile`) and `time_scale` (default `ut1-from-iers`). So an address reproduces exactly what the page shows. It shows:
   - the resolved time and where UT1 came from;
@@ -344,6 +353,10 @@ cd research-platform && RESEARCH_DEBUG=1 uv run python manage.py runserver 127.0
 61. Expect "It has results, so it's locked", and no **Edit it**. Open the hypothesis's address with `edit/` at the end. Expect "Mars on an angle in athletes has results, so it can't change".
 62. Follow **Its inputs (CSV)**. Expect `result-<id>-inputs.csv` with one row: step 1's record, `true` or `false` for the feature, and `true` for the group.
 63. Open **Hypotheses**. Expect the hypothesis with 1 result and its p-value, and "1 result recorded in all". The command `run_hypothesis "Mars on an angle in athletes"` runs it too, and prints the result.
+64. Follow **Research platform** in the header. Expect the home page: **Records**, **Datasets**, **Features** and **Hypotheses**, each with its count, and the latest runs and results, step 60's result among them.
+65. Follow **Records**. Expect every record, by subject. Type part of a subject's label in **Subject** and press **Find**. Expect only that subject's records, and the search kept in the box.
+66. On a record's chart page, follow **All records**, then a dataset under **In**. Expect the records page, then the dataset's page.
+67. On a run's page, follow a chart, then follow the record under "Stored for". Expect the record's chart, computed afresh.
 
 ## The desktop app
 
@@ -358,12 +371,13 @@ At each launch it:
 1. **keeps its data in the system's folder for app data,** readable only by you: `~/Library/Application Support/Astro Research/` on a Mac, `%APPDATA%\Astro Research\` on Windows, and `~/.local/share/Astro Research/` (or `$XDG_DATA_HOME`) elsewhere. That's its SQLite database and its session key. "Astro Research" is a placeholder until the app is named. The app always uses SQLite, whatever `RESEARCH_DATABASE` says.
 2. **applies the database's migrations,** so a new version upgrades the data as it opens. It makes the one local account the first time: an admin with no usable password, so nothing but the app's window can log in as it.
 3. **serves the platform with [waitress](https://github.com/Pylons/waitress)** (3.0.2, ZPL 2.1) on 127.0.0.1 at a free port, so only this computer can reach it. Pages still need a login. It serves the platform's static files (HTMX) itself, since Django serves them only in debug mode.
-4. **opens a [pywebview](https://github.com/r0x0r/pywebview) window** (6.2.1, BSD-3-Clause, with pyobjc on a Mac, MIT). The window opens a link holding a secret made for this launch, which logs it in once and shows the datasets page. A used, wrong or unarmed link is not found, and a wrong guess leaves the right one working. Downloads are switched on (pywebview turns them off unless asked), and the window keeps nothing between launches, so each launch logs in afresh. There's no **Log out** in the app: there'd be no way back in without restarting it. Closing the window stops the server.
+4. **opens a [pywebview](https://github.com/r0x0r/pywebview) window** (6.2.1, BSD-3-Clause, with pyobjc on a Mac, MIT). The window opens a link holding a secret made for this launch, which logs it in once and shows the home page. A used, wrong or unarmed link is not found, and a wrong guess leaves the right one working. Downloads are switched on (pywebview turns them off unless asked), and the window keeps nothing between launches, so each launch logs in afresh. There's no **Log out** in the app: there'd be no way back in without restarting it. Closing the window stops the server.
 
 `--prepare FOLDER` does steps 1 and 2 in a folder of your choosing and exits, without a window. pywebview is an optional dependency (`--extra desktop`), so the tests and the web interface don't install it.
 
+**A Back button** is in the header in the app, since a window has no browser's; it goes back as a browser's would.
+
 **Not yet:**
-- **Navigation for a window:** it has no Back button or address bar, and the pages assume a browser's.
 - **Installers:** signed ones for Mac and Windows, built on GitHub's machines. `pysweph` publishes no ready-built package for Intel Macs (checked on PyPI), so those would need Swiss Ephemeris built from source.
 - **A way to back up the data.**
 - **Data entry friendlier than the admin.**
@@ -371,12 +385,13 @@ At each launch it:
 
 **Checking it on a Mac.** The tests start the app's server and fetch pages and downloads through it, but they can't open the window. These steps check what only the window shows:
 
-1. Run the command above. Expect a window titled "Astro Research" showing the datasets page, with **Datasets**, **Features**, **Hypotheses** and **Admin** in the header and no **Log out**. Expect a folder `~/Library/Application Support/Astro Research/` with `research.sqlite3` and `.secret_key` in it.
+1. Run the command above. Expect a window titled "Astro Research" showing the home page, with **← Back**, **Records**, **Datasets**, **Features**, **Hypotheses** and **Admin** in the header and no **Log out**. Expect a folder `~/Library/Application Support/Astro Research/` with `research.sqlite3` and `.secret_key` in it.
 2. Follow **Admin**. Expect the admin, logged in as `local`, without having been asked for a password.
 3. Add a subject, a source, a record and a dataset as in the browser steps 1 and 30, then run the dataset from its page with `major`. Expect the run's page.
 4. Follow **the outcomes (CSV)**. Expect a dialog asking where to save `run-<id>-outcomes.csv`, and the file saved there.
 5. On a record's chart page, choose a point under **Involving**. Expect the pairs table to change without the page reloading, which shows HTMX was served.
-6. Close the window. Expect the command to finish. Run it again: expect the window logged in again, with step 3's dataset still listed.
+6. From the run's page, follow a chart, then press **← Back**. Expect the run's page again.
+7. Close the window. Expect the command to finish. Run it again: expect the window logged in again, on the home page, with step 3's record and dataset counted.
 
 ## Tests
 

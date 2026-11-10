@@ -12,7 +12,9 @@ zone rules, tzdb's reference-city local mean time, and tzdb rules before 1970 (u
 all raise a `CivilTimeError` subclass carrying what is needed to correct the record.
 
 Zones are loaded from the pinned `tzdata` package, never from the operating system's database,
-and the package version is recorded in every tzdb-based result.
+and the package version is recorded in every tzdb-based result. A zone the package doesn't have
+is refused as soon as a `ZonedLocalTime` is made, so a misspelt zone is caught where it's entered
+rather than when the time is first resolved.
 """
 
 import enum
@@ -190,6 +192,8 @@ class ZonedLocalTime:
 
     def __post_init__(self) -> None:
         _require_plain_gregorian(self.local)
+        if self.zone not in _TZDATA_KEYS:
+            raise UnknownTimeZone(self.zone)
         if self.stated_utc_offset is not None:
             _require_offset_under_a_day(self.stated_utc_offset)
 

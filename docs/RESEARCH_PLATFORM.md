@@ -163,6 +163,39 @@ cd research-platform && uv run python manage.py import_charts ~/Downloads/chart-
 
 A later version of the format is refused (`unsupported-version`) until the reader learns it.
 
+## Importing records and values from CSV
+
+`import_csv` reads a spreadsheet saved as CSV, with a row per subject: the birth data, then a column for each variable already defined. It imports every row or none.
+
+```bash
+cd research-platform && uv run python manage.py import_csv subjects.csv --source 3 --dataset demo --check
+```
+
+**The birth-data columns:**
+- **Required:** `subject` (the label), `time`, `time_kind`, `latitude` and `longitude` (decimal degrees, north and east positive).
+- **`time`** is the wall-clock reading in ISO 8601, with a time and without an offset, such as `1987-06-15T04:25`.
+- **`time_kind`** is stated in every row, never guessed from which cells are filled:
+  - `utc`: `time` is the UTC reading;
+  - `zone`: `time` is the wall clock in `zone`, an IANA name such as `Europe/London`. `utc_offset` may state its offset, which the engine then checks;
+  - `offset`: `time` is the wall clock at `utc_offset`, such as `+01:00`, `-05:30` or, to the second, `+00:09:21`;
+  - `local-mean-time`: the birthplace's local mean time.
+- **Optional:** `elevation_m`; `time_resolution` (`hour`, `minute` or `second`); `stated_uncertainty_s` (seconds, 0 or more); and `accept_pre_1970_tzdb` (`yes` or `no`, for zone rows only).
+
+**The variable columns** are named after variables you've already defined. A cell holds one of the variable's categories by its exact name, a number, or yes/no in any case. An empty cell is a missing value. A column that's neither birth data nor a variable refuses the file, so a typo in a heading can't quietly drop a variable.
+
+**How it's checked:**
+- **Every row is checked as the admin checks it,** the record by the engine, and every refused row is listed by its line (the header is line 1) with its reason. If any row is refused, nothing is imported.
+- **A subject's label** must fit its 200 characters. SQLite wouldn't enforce that (observed), and PostgreSQL would refuse it only while saving.
+- **A subject that already exists, or that's on two lines,** is refused unless `--add-to-existing` says it's the same person. Then the row adds a record to it, but never overwrites a value already recorded, and two lines can't give one subject two values of a variable.
+- **The file** must be UTF-8. Excel's byte order mark is accepted. Columns are separated by commas, so a spreadsheet saved with semicolons, as some locales do, is refused as missing its columns.
+
+**Its options:**
+- `--source` cites one source for every record and value;
+- `--dataset` adds the records to an existing dataset;
+- `--check` checks the file but saves nothing.
+
+**Its output:** for example `imported 120 records: 120 new subjects, 240 values`.
+
 ## The web interface
 
 It runs on this machine only: it answers on 127.0.0.1 and localhost, and every page needs a login.
@@ -353,10 +386,23 @@ cd research-platform && RESEARCH_DEBUG=1 uv run python manage.py runserver 127.0
 61. Expect "It has results, so it's locked", and no **Edit it**. Open the hypothesis's address with `edit/` at the end. Expect "Mars on an angle in athletes has results, so it can't change".
 62. Follow **Its inputs (CSV)**. Expect `result-<id>-inputs.csv` with one row: step 1's record, `true` or `false` for the feature, and `true` for the group.
 63. Open **Hypotheses**. Expect the hypothesis with 1 result and its p-value, and "1 result recorded in all". The command `run_hypothesis "Mars on an angle in athletes"` runs it too, and prints the result.
-64. Follow **Research platform** in the header. Expect the home page: **Records**, **Datasets**, **Features** and **Hypotheses**, each with its count, and the latest runs and results, step 60's result among them.
-65. Follow **Records**. Expect every record, by subject. Type part of a subject's label in **Subject** and press **Find**. Expect only that subject's records, and the search kept in the box.
-66. On a record's chart page, follow **All records**, then a dataset under **In**. Expect the records page, then the dataset's page.
-67. On a run's page, follow a chart, then follow the record under "Stored for". Expect the record's chart, computed afresh.
+64. Save this as `subjects.csv`, with a variable `profession` defined (step 41):
+
+    ```
+    subject,time,time_kind,zone,latitude,longitude,profession
+    csv-1,1990-03-21T12:00,zone,Europe/Paris,48.8566,2.3522,athlete
+    csv-2,1990-03-21T18:30,zone,Europe/Pariss,48.8566,2.3522,Athlete
+    ```
+
+    Run `import_csv subjects.csv --source <id> --check`. Expect "nothing was imported: 1 of 2 rows refused" and line 3's reason: "'Europe/Pariss' is not a time zone in tzdata …".
+65. Correct line 3's zone to `Europe/Paris` and run the check again. Expect line 3 refused again, now for "'Athlete' is not one of profession's categories". Correct it to `athlete`.
+66. Run it without `--check` and with `--dataset sample`. Expect "imported 2 records: 2 new subjects, 2 values", and on the dataset's page both records, with `profession` counting the new subjects.
+67. Run it again. Expect both rows refused: "subject 'csv-1' already exists; --add-to-existing adds a record to it".
+68. In the admin, edit a record and set its zone to `Europe/Londn`. Expect "'Europe/Londn' is not a time zone in tzdata …", and the record not saved.
+69. Follow **Research platform** in the header. Expect the home page: **Records**, **Datasets**, **Features** and **Hypotheses**, each with its count, and the latest runs and results, step 60's result among them.
+70. Follow **Records**. Expect every record, by subject. Type part of a subject's label in **Subject** and press **Find**. Expect only that subject's records, and the search kept in the box.
+71. On a record's chart page, follow **All records**, then a dataset under **In**. Expect the records page, then the dataset's page.
+72. On a run's page, follow a chart, then follow the record under "Stored for". Expect the record's chart, computed afresh.
 
 ## The desktop app
 

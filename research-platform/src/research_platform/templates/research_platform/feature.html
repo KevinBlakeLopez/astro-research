@@ -1,0 +1,37 @@
+{% extends "research_platform/base.html" %}
+{% block title %}Feature: {{ feature.name }}{% endblock %}
+{% block content %}
+<h1>{{ feature.name }}</h1>
+<p>A {{ kind.name }} feature: {{ feature.describe }}. <a href="{% url 'features' %}">All features</a></p>
+{% if feature.description %}<p>{{ feature.description|linebreaksbr }}</p>{% endif %}
+
+<h2>Its values in a run</h2>
+{% if runs %}
+<p>Show the values in:
+  {% for each in runs %}<a href="{% url 'feature' feature.pk %}?run={{ each.pk }}">run {{ each.pk }} of {{ each.dataset.name }}</a>{% if each.pk == run.pk %} (shown){% endif %}{% if not forloop.last %} · {% endif %}{% endfor %}</p>
+{% else %}
+<p>No finished runs yet. Start one from a <a href="{% url 'datasets' %}">dataset's page</a>.</p>
+{% endif %}
+{% if error %}{% include "research_platform/request_error.html" %}{% endif %}
+{% if refusal %}
+<div class="refusal"><p><strong>The values can't be shown: <code>{{ refusal.name }}</code></strong></p><p>{{ refusal.message }}</p></div>
+{% elif run %}
+<h3>Run {{ run.pk }} of {{ run.dataset.name }}</h3>
+<p class="counts">{{ counts }}</p>
+{% if refused %}<p>{{ refused }} refused, with no value.</p>{% endif %}
+<div class="scroll"><table>
+  <thead><tr><th class="name">Record</th><th class="name">Subject</th><th class="name">Value</th></tr></thead>
+  <tbody>
+  {% for record, value in rows %}
+  <tr data-record="{{ record.pk }}" data-value="{{ value }}">
+    <td class="name"><a href="{% url 'record-chart' record.pk %}">{{ record.pk }}</a></td>
+    <td class="name">{{ record.subject.label }}</td>
+    <td class="name">{{ value }}</td>
+  </tr>
+  {% empty %}
+  <tr><td class="name" colspan="3">This run has no charts.</td></tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% endif %}
+{% endblock %}

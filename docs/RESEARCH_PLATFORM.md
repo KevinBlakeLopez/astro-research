@@ -18,15 +18,18 @@ Django owns the schema (`research_platform/models.py` and its migrations). The w
 | `Variable` | Something recorded about subjects: a unique name, a kind (category, number or yes/no), a unit for a number, a description. |
 | `Category` | One of a category variable's values, unique within it, in the order added. |
 | `Observation` | One subject's value of one variable, from a cited source, with notes. At most one per subject and variable, and exactly one of a category, a number and yes/no (database constraints). |
+| `Feature` | A derived configuration: a unique name, a kind from `features.py`, the kind's settings (checked by the kind, kept in a standard form), a description. |
 | `ImportedChart` | The AstroChart Bridge file a record was imported from, exactly as it was, once (its SHA-256 is unique), with where AstroChart Bridge read the chart and how it decided the offset in columns of their own. |
 
 ## The research layer
 
-It's being built in this order: what's known about subjects (variables, below), then derived configurations, hypotheses and analysis runs.
+It's being built in this order: what's known about subjects (variables) and derived configurations (features), both below, then hypotheses and analysis runs.
 
-**Analyses will be Python functions you register,** not tests built into the platform. A hypothesis will name one. The platform will run it on the calculation run the hypothesis names, and record every result, null ones included, with the hypothesis, the analysis code's hash, the seed and the run's provenance. A hypothesis will be locked once it has a result.
+**Researchers fill in forms; they don't write code.** Most astrologers aren't developers, and on a hosted site, running researchers' own code would let them run anything on the server. So features and analyses each come from a registry written as code by the platform's maintainers. A researcher chooses a kind and fills in its settings.
 
-This keeps the methods yours, as the Phase 1 report asks for research rules. And because every result is recorded whatever it shows, it guards against keeping only the tests that worked. The other options were statistics in your own scripts with results recorded by hand, or a fixed set of built-in tests; the first records only what you record, and the second chooses methods for you.
+**Analyses will be Python functions in that registry,** not one fixed test. A hypothesis will name an analysis and its settings. The platform will run it on the calculation run the hypothesis names, and record every result, null ones included, with the hypothesis, the analysis code's hash, the seed and the run's provenance. A hypothesis will be locked once it has a result.
+
+This keeps methods out of the engine, as the Phase 1 report asks for research rules. And because every result is recorded whatever it shows, it guards against keeping only the tests that worked. The other options were statistics in researchers' own scripts with results recorded by hand, which records only what they record, or a single built-in test, which chooses the method for them.
 
 **Variables.** A variable holds outcomes and anything to control for alike: whether it's an outcome is the hypothesis's to say.
 - **Each value is checked against its variable** when it's validated (on save in the admin):
@@ -37,6 +40,16 @@ This keeps the methods yours, as the Phase 1 report asks for research rules. And
 - **A value belongs to the subject,** whichever record a dataset uses, and cites its own source, which may not be the birth data's. If sources disagree, you choose, and the notes say why. A subject with no value is missing, and nothing fills it in.
 - **Nothing is left meaning something it can't.** A category in use can't be deleted: the admin refuses, naming the values that use it (observed). A variable with values can't change its kind, nor can one with categories become another kind until they're deleted.
 - **Not yet:** dates and events (an event has its own time and perhaps a place, so it's closer to a record), importing values from CSV, and downloading a dataset's values.
+
+**Features** (derived configurations) are what you define from a chart. A feature is a name, a kind from the registry in `research_platform/features.py`, the kind's settings and a description. The kind checks the settings and keeps them in a standard form.
+- **Contact (yes/no):** a point, one or more other points, one or more aspect angles (0° to 180°, in degrees or as `major` and `octile`), and an orb of 0° or more.
+  - It's yes when, for any of the other points and angles, the ecliptic separation is within the orb of the angle, the orb's edge included. That's the separation in the pairs table.
+  - Mars to the Ascendant or MC at 0° or 180°, within 10°, is "Mars on an angle": 180° from the Ascendant is the Descendant, and from the MC the IC.
+  - **This isn't Gauquelin's "Mars effect".** He used diurnal sectors after rising and culmination, which the engine doesn't compute.
+- **Sign (a category):** a point's tropical zodiac sign, its longitude in 30° steps from 0° Aries.
+- **Points** are a chart's 17: the bodies, the lunar points, the Ascendant, MC and Vertex.
+- **Values come from a run's stored charts when asked for,** a batch at a time, and only the values are kept, never stored. Refused records have none.
+- **Not yet:** numeric kinds (such as the closest deviation), declination beyond a limit, parans, and locking a feature once a hypothesis uses it.
 
 **Records, field by field.** A record's `reading` is ISO 8601 text. It's aware (`+00:00`) for UTC and the naive wall-clock reading otherwise, since a Django `DateTimeField` can't hold a naive reading while times are kept zone-aware. The other fields are `zone`, `utc_offset_us` (the offset of an offset time, or the stated offset of a zoned one), `accept_pre_1970_tzdb`, `latitude`, `longitude`, `elevation_m`, `time_resolution` and `stated_uncertainty_us`.
 
@@ -192,6 +205,9 @@ It runs on this machine only: it answers on 127.0.0.1 and localhost, and every p
   - **Values** are written as Python's repr, which Python's `float()` reads back exactly. pandas' documentation says its default number parser isn't always exact and `float_precision="round_trip"` is; that hasn't been checked here.
   - **A stored document this engine can't read** refuses the table with a 422 and the reason, before anything is sent, rather than stopping a download partway. So every document is read twice: once to check it, then a batch of records at a time to write the rows.
   - **Cost:** for 500 charts, each table took 2.5–2.8 s, 1.2 s of it before the first byte. Pairs came to 68,000 rows and 16.2 MiB, points to 8,500 rows and 1.5 MiB (measured).
+- **Features** (`/features/`, linked from every page's header) lists each feature by name, with its kind and definition in words.
+  - **Adding one** (`/features/new/`): choose its kind, then fill in that kind's form, which is a POST with Django's CSRF check. A form it can't save shows why, and keeps what was entered.
+  - **A feature's page** (`/features/<id>/`) shows its definition. For a finished run you choose (`?run=<id>`), it shows each charted record's value, the counts (every possible value, zeros included) and how many records were refused. A stored document this engine can't read shows why, with a 422.
 - **A stored chart** (`/charts/<calculation key>/`) reads the stored document back and shows it with the chart page's tables and every pair. There's no settings form, since a stored chart's settings are fixed. It shows the engine version that computed it, from the document's inputs, and says so if that isn't the running one. A document this engine can't read shows why, with a 422.
 - **Refusals.** Settings, offsets or a filter a page can't use are refused with a 400, and the reason is shown where it happened, with debug mode on or off:
   - **on a page:** above its forms, which keep what was submitted, with no results;
@@ -270,6 +286,11 @@ cd research-platform && RESEARCH_DEBUG=1 uv run python manage.py runserver 127.0
 49. Open the new record in the admin. Expect **Imported from** with the file's name, its site, how it was read and how its UTC was decided. Follow the file's name: expect the file's text and no **Save** button.
 50. Follow **Chart** on the record. Expect the UTC that AstroChart Bridge showed in step 46.
 51. Run step 48's command again. Expect "nothing was imported", with the file listed as `duplicate`.
+52. Follow **Features** in the header, then **Add a feature**. Expect a choice of **contact** and **sign**. Choose **contact**.
+53. Enter the name `Mars on an angle`, choose `mars` as the point, tick `ascendant` and `midheaven`, enter `0, 180` as the angles and `10` as the orb, and press **Add**. Expect the feature's page with "mars to ascendant or midheaven at 0° or 180°, within 10°".
+54. Follow the run from step 31. Expect each of the dataset's two charted records with yes or no, the counts below "Run …", and "1 refused, with no value".
+55. Add another contact feature with `mars` ticked among its own other points. Expect "a point can't be in contact with itself" above the form, with what you entered still there.
+56. Add a **sign** feature for `sun`, and show it for step 31's run. Expect all 12 signs in the counts, with the records' signs counted.
 
 ## Tests
 

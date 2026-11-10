@@ -1,5 +1,5 @@
 """The platform's pages: the admin, logging in and out, a record's chart, its sensitivity,
-eclipses and parans, comparisons, and datasets with their runs and stored charts."""
+eclipses and parans, comparisons, datasets with their runs and stored charts, and features."""
 
 from django.contrib import admin
 from django.contrib.auth import views as auth_views
@@ -7,6 +7,7 @@ from django.urls import path
 
 from research_platform import (
     eclipses_views,
+    features_views,
     parans_views,
     runs_views,
     sensitivity_views,
@@ -76,4 +77,7 @@ urlpatterns = [
     path("runs/<int:pk>/points.csv", runs_views.run_points_csv, name="run-points-csv"),
     path("runs/<int:pk>/pairs.csv", runs_views.run_pairs_csv, name="run-pairs-csv"),
     path("charts/<str:key>/", runs_views.stored_chart, name="stored-chart"),
+    path("features/", features_views.features_list, name="features"),
+    path("features/new/", features_views.feature_new, name="feature-new"),
+    path("features/<int:pk>/", features_views.feature, name="feature"),
 ]

@@ -19,8 +19,12 @@ What's known about each subject is in variables:
 - an `Observation` is one subject's value of one variable, from a cited source. A subject has
   at most one per variable; one without is missing.
 
-Whether a variable is an outcome or something to control for is a hypothesis's to say. Derived
-configurations, hypotheses and analysis runs are the rest of the research layer, still to come.
+Whether a variable is an outcome or something to control for is a hypothesis's to say.
+
+A `Feature` (a derived configuration) is something you define from a chart: a kind from the
+registry in `features.py` and the kind's settings, such as "Mars within 10 degrees of an angle".
+Its value comes from a stored chart when needed and is never stored. Hypotheses and analysis
+runs are the rest of the research layer, still to come.
 """
 
 import dataclasses
@@ -45,6 +49,7 @@ from astro_research.ephemeris import EphemerisProvenance
 from astro_research.geo import GeoPosition
 from astro_research.positions import Body, LunarPoint, Point
 from astro_research.result_format import chart_from_json
+from research_platform import features
 
 _POINTS: dict[str, Point] = {member.value: member for member in (*Body, *LunarPoint)}
 
@@ -455,6 +460,28 @@ class Observation(models.Model):
 
     def __str__(self) -> str:
         return f"{self.subject}: {self.variable} = {self.value}"
+
+
+class Feature(models.Model):
+    """A derived configuration: a kind from `features.KINDS` and its settings, which the kind
+    checks and keeps in a standard form."""
+
+    name = models.CharField(max_length=200, unique=True)
+    kind = models.CharField(max_length=50)
+    settings = models.JSONField(default=dict, help_text="The kind's settings, as it checks them.")
+    description = models.TextField(blank=True)
+
+    def clean(self) -> None:
+        self.settings = features.kind(self.kind).check(self.settings)
+
+    def describe(self) -> str:
+        return features.KINDS[self.kind].describe(self.settings)
+
+    def value(self, chart: Chart) -> features.Value:
+        return features.KINDS[self.kind].value(self.settings, chart)
+
+    def __str__(self) -> str:
+        return self.name
 
 
 def _microseconds(duration: timedelta | None) -> int | None:

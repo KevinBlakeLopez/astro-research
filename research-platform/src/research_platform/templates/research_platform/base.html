@@ -15,6 +15,7 @@
   th:first-child, td:first-child, th.name, td.name { text-align: left; }
   .scroll { overflow-x: auto; }
   .refusal { border-left: 4px solid #c33; padding: 8px 12px; background: #c331; }
+  ul.errorlist { color: #c33; padding-left: 1.2em; }
   form.settings label, form.filter label { margin-right: 12px; }
   code { font-size: 0.95em; }
 </style>
@@ -26,6 +27,7 @@
 <header>
   <strong>Research platform</strong>
   <a href="{% url 'datasets' %}">Datasets</a>
+  <a href="{% url 'features' %}">Features</a>
   <a href="{% url 'admin:index' %}">Admin</a>
   {% if user.is_authenticated %}
   <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button type="submit">Log out</button></form>

@@ -1,0 +1,22 @@
+{% extends "research_platform/base.html" %}
+{% block title %}Features{% endblock %}
+{% block content %}
+<h1>Features</h1>
+<p>A feature is something defined from a chart, such as "Mars within 10° of an angle". Its value for each record comes from a run's stored charts. <a href="{% url 'feature-new' %}">Add a feature</a></p>
+{% if features %}
+<table>
+  <thead><tr><th class="name">Feature</th><th class="name">Kind</th><th class="name">Definition</th></tr></thead>
+  <tbody>
+  {% for feature in features %}
+  <tr data-feature="{{ feature.pk }}">
+    <td class="name"><a href="{% url 'feature' feature.pk %}">{{ feature.name }}</a></td>
+    <td class="name">{{ feature.kind }}</td>
+    <td class="name">{{ feature.describe }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>None yet.</p>
+{% endif %}
+{% endblock %}

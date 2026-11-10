@@ -1,0 +1,24 @@
+{% extends "research_platform/base.html" %}
+{% block title %}Add a feature{% endblock %}
+{% block content %}
+<h1>Add a feature</h1>
+<p><a href="{% url 'features' %}">All features</a></p>
+{% if error %}{% include "research_platform/request_error.html" %}{% endif %}
+{% if form %}
+<h2>A {{ kind.name }} feature</h2>
+<p>{{ kind.explanation }}</p>
+<form class="settings" method="post" action="{% url 'feature-new' %}?kind={{ kind.name }}">
+  {% csrf_token %}
+  {{ form.as_p }}
+  <button type="submit">Add</button>
+</form>
+<p>A contact uses the ecliptic separation, as the chart's pairs table does: 180° from the Ascendant is the Descendant, and from the MC the IC.</p>
+<p><a href="{% url 'feature-new' %}">Choose another kind</a></p>
+{% else %}
+<h2>Choose its kind</h2>
+<ul>
+  {% for each in kinds %}<li><a href="{% url 'feature-new' %}?kind={{ each.name }}">{{ each.name }}</a>: {{ each.explanation }}</li>
+  {% endfor %}
+</ul>
+{% endif %}
+{% endblock %}

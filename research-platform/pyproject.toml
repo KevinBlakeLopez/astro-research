@@ -37,7 +37,8 @@ files = ["src", "tests"]
 plugins = ["mypy_django_plugin.main"]
 
 [[tool.mypy.overrides]]
-module = ["swisseph"]
+# pywebview is the desktop extra's, so it's missing unless that extra is installed.
+module = ["swisseph", "webview"]
 ignore_missing_imports = true
 
 [tool.django-stubs]

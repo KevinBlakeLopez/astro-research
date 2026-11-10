@@ -341,6 +341,13 @@ def test_a_file_that_isn_t_utf_8_is_refused(tmp_path: Path, source: Source) -> N
 
 
 @pytest.mark.django_db
+def test_a_file_with_a_nul_character_is_refused(tmp_path: Path, source: Source) -> None:
+    path = write(tmp_path, [row(), row(subject="subject\x00b")])
+    assert "the file has a NUL character, on line 3" in refusal(path, source)
+    assert nothing_saved()
+
+
+@pytest.mark.django_db
 def test_the_source_and_dataset_must_exist(tmp_path: Path, source: Source) -> None:
     path = write(tmp_path, [row()])
     with pytest.raises(CommandError, match="no source with id 999999"):

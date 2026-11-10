@@ -1,6 +1,6 @@
 """The platform's pages: the admin, logging in and out, a record's chart, its sensitivity,
-eclipses and parans, comparisons, datasets with their runs and stored charts, features, and
-hypotheses with their results."""
+eclipses and parans, comparisons, datasets with their runs and stored charts, features,
+hypotheses with their results, and importing a CSV file."""
 
 from django.contrib import admin
 from django.contrib.auth import views as auth_views
@@ -15,6 +15,7 @@ from research_platform import (
     parans_views,
     runs_views,
     sensitivity_views,
+    upload_views,
     views,
 )
 
@@ -22,6 +23,10 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("", nav_views.home, name="home"),
     path("records/", nav_views.records, name="records"),
+    path("import/", upload_views.upload, name="csv-import"),
+    path("import/template.csv", upload_views.blank_template, name="csv-import-template"),
+    path("import/<int:pk>/", upload_views.waiting, name="pending-import"),
+    path("import/<int:pk>/save/", upload_views.save, name="pending-import-save"),
     path("login/", auth_views.LoginView.as_view(), name="login"),
     path("logout/", auth_views.LogoutView.as_view(), name="logout"),
     path("records/<int:pk>/chart/", views.record_chart, name="record-chart"),

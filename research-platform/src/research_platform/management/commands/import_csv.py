@@ -11,7 +11,7 @@ from typing import Any
 
 from django.core.management.base import BaseCommand, CommandError
 
-from research_platform.csv_import import FileRefused, plan_import, save
+from research_platform.csv_import import FileRefused, counted, plan_import, read_text, save
 from research_platform.models import Dataset, Source
 
 
@@ -43,7 +43,8 @@ class Command(BaseCommand):
             except Dataset.DoesNotExist:
                 raise CommandError(f"no dataset named {options['dataset']!r}") from None
         try:
-            plan = plan_import(options["file"], source, add_to_existing=options["add_to_existing"])
+            text = read_text(options["file"].read_bytes())
+            plan = plan_import(text, source, add_to_existing=options["add_to_existing"])
         except FileRefused as error:
             raise CommandError(f"nothing was imported: {error}") from None
         if plan.refused:
@@ -52,14 +53,10 @@ class Command(BaseCommand):
                 f"nothing was imported: {len(plan.refused)} of {plan.total} rows refused\n"
                 + "\n".join(lines)
             )
-        records, values = _count(len(plan.rows), "record"), _count(plan.values, "value")
+        records, values = counted(len(plan.rows), "record"), counted(plan.values, "value")
         if options["check"]:
             self.stdout.write(f"{records} can be imported, with {values}; nothing was saved")
             return
         save(plan, source, dataset)
-        subjects = _count(plan.new_subjects, "new subject")
+        subjects = counted(plan.new_subjects, "new subject")
         self.stdout.write(f"imported {records}: {subjects}, {values}")
-
-
-def _count(number: int, noun: str) -> str:
-    return f"{number} {noun}" if number == 1 else f"{number} {noun}s"

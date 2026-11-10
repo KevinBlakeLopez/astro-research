@@ -22,6 +22,7 @@ Django owns the schema (`research_platform/models.py` and its migrations). The w
 | `Hypothesis` | A question for a run: a feature, a variable and its group, a finished run, an analysis from `analyses.py` and its settings, and a statement. Locked once it has a result. |
 | `AnalysisRun` | One result of a hypothesis: its inputs, the records left out and why, the analysis's result, the analysis code's SHA-256 and the engine version. Never changed or deleted. |
 | `ImportedChart` | The AstroChart Bridge file a record was imported from, exactly as it was, once (its SHA-256 is unique), with where AstroChart Bridge read the chart and how it decided the offset in columns of their own. |
+| `PendingImport` | A CSV file uploaded on the import page that passed its check, waiting to be imported: its name, its text, the source, dataset and "same person" choice it was uploaded with. One per account at most; the next file to pass replaces it, and importing deletes it. |
 
 ## The research layer
 
@@ -165,7 +166,7 @@ A later version of the format is refused (`unsupported-version`) until the reade
 
 ## Importing records and values from CSV
 
-`import_csv` reads a spreadsheet saved as CSV, with a row per subject: the birth data, then a column for each variable already defined. It imports every row or none.
+`import_csv` reads a spreadsheet saved as CSV, with a row per subject: the birth data, then a column for each variable already defined. It imports every row or none. The import page does the same from the browser (see [the web interface](#the-web-interface)).
 
 ```bash
 cd research-platform && uv run python manage.py import_csv subjects.csv --source 3 --dataset demo --check
@@ -188,6 +189,7 @@ cd research-platform && uv run python manage.py import_csv subjects.csv --source
 - **A subject's label** must fit its 200 characters. SQLite wouldn't enforce that (observed), and PostgreSQL would refuse it only while saving.
 - **A subject that already exists, or that's on two lines,** is refused unless `--add-to-existing` says it's the same person. Then the row adds a record to it, but never overwrites a value already recorded, and two lines can't give one subject two values of a variable.
 - **The file** must be UTF-8. Excel's byte order mark is accepted. Columns are separated by commas, so a spreadsheet saved with semicolons, as some locales do, is refused as missing its columns.
+- **A NUL character** refuses the file, with its line. Python's csv reads one as part of a cell (observed), so a label with one was stored on SQLite, and PostgreSQL, which can't store it in text, stopped the import with a `DataError`, even with `--check` (both observed).
 
 **Its options:**
 - `--source` cites one source for every record and value;
@@ -200,7 +202,13 @@ cd research-platform && uv run python manage.py import_csv subjects.csv --source
 
 It runs on this machine only: it answers on 127.0.0.1 and localhost, and every page needs a login.
 
-- **The home page** (`/`) shows the platform's places, records, datasets, features and hypotheses, each with how many it holds, and the five latest runs and hypothesis results, each a link. With no records yet, it says where to start. The header links home and to each place, and the admin's **View site** leads here.
+- **The home page** (`/`) shows the platform's places, records, datasets, features and hypotheses, each with how many it holds, and the five latest runs and hypothesis results, each a link. With no records yet, it says where to start: the import page, or the admin. The header links home, to each place and to the import page, and the admin's **View site** leads here.
+- **The import page** (`/import/`) imports a CSV file, the same import as `import_csv`, with the same checks. It lists the columns, with each variable's categories, and offers a blank CSV with every column as its header row (`/import/template.csv`), which begins with a byte order mark so that Excel opens it as UTF-8. With no source yet, it says to add one in the admin.
+  - **Uploading only checks.** A refused file, or every refused row by its line, is shown with a 422, and nothing is kept or changed. The page's reasons name its **Same person** box, not the command's `--add-to-existing`.
+  - **A file that passes waits** (`/import/<id>/`), one per account, the next to pass replacing it. Its page shows the counts and each row as it was read: the subject, and whether it's new, already here, or as on an earlier line; the time as given, the UTC it resolves to, and the offset used and where it came from; the place; and the values. That's where a mistake no check can see shows, such as latitude and longitude swapped or the wrong zone. A time with no single UTC, such as one that happens twice as summer time ends, shows "none" and why: it's imported, as the command imports it, and a run records the engine's refusal of its chart.
+  - **It's checked again** whenever it's shown or imported, since a subject or a variable may have changed in the meantime. Refused now, it shows why with a 422, and no **Import** button.
+  - **Import** (a POST) saves every row or none, deletes the waiting file, and opens the dataset's page, or the records page, saying what was imported.
+  - **A waiting file is its account's alone:** another account's isn't found.
 - **The records page** (`/records/`) lists every record, 100 at a time, by subject: its reading, zone and source, and links to its chart and the datasets holding it. A search finds records by part of a subject's label.
   - **Ignoring case, accented letters included.** That's done in Python with `casefold`, since SQLite's own matching found "Émile" from `ÉMILE` but not from `émile` (observed). The order, by subject ignoring case, is Python's too, so it's the same on SQLite and PostgreSQL.
   - **Only the page's own records** are then read in full.
@@ -403,6 +411,14 @@ cd research-platform && RESEARCH_DEBUG=1 uv run python manage.py runserver 127.0
 70. Follow **Records**. Expect every record, by subject. Type part of a subject's label in **Subject** and press **Find**. Expect only that subject's records, and the search kept in the box.
 71. On a record's chart page, follow **All records**, then a dataset under **In**. Expect the records page, then the dataset's page.
 72. On a run's page, follow a chart, then follow the record under "Stored for". Expect the record's chart, computed afresh.
+73. Follow **Import** in the header. Expect "Import a spreadsheet", the form with the sources from earlier steps, and the columns, with `profession: one of athlete, musician`.
+74. Follow **Download a blank CSV**. Expect `import-template.csv`. Open it in a spreadsheet and add a row: `upload-1`, `1990-03-21T12:00`, `zone`, `48.8566`, `2.3522`, `Europe/Paris` under `zone`, and `musician` under `profession`. In Excel, save it as **CSV UTF-8 (Comma delimited)**. Note whether the spreadsheet kept the time as typed.
+75. Back on the import page, choose the file and a source, and press **Upload and check**. Expect the waiting file's page: "1 record can be imported: 1 new subject, 1 value", and line 2 with `upload-1 (new)`, `1990-03-21 11:00:00 UTC`, `+01:00 (CET, the time-zone database)` and `musician`. If the spreadsheet changed the time to its own format, expect line 2 refused as "not an ISO 8601 date and time" instead.
+76. Open the import page again. Expect "Waiting to be imported" with the file's name, linking to step 75's page. Follow it, and press **Import**. Expect the records page with "Imported 1 record: 1 new subject, 1 value" at the top, and `upload-1` among the records.
+77. Upload the same file again. Expect "Nothing was imported: 1 of 1 rows refused" and "line 2: subject 'upload-1' already exists; ticking "Same person" adds a record to it", with the form still there.
+78. Tick **Same person** and upload it again. Expect "line 2: subject 'upload-1' already has a value of profession". Clear that cell, save the file, and upload it again with **Same person** ticked and the `sample` dataset chosen. Expect `upload-1 (already here)` and "1 record can be imported: 0 new subjects, 0 values". Press **Import**. Expect the `sample` dataset's page, saying what was imported, with the new record in it.
+79. Change the label to `upload-2` and the latitude to `91`, save, and upload it. Expect line 2 refused with the engine's reason about latitude, and nothing new on the records page.
+80. In Excel, save a copy as plain **CSV** rather than CSV UTF-8, with a label that has an accented letter, such as `Zoë`. Upload it. Expect either `Zoë` on the waiting file's page or "Nothing was imported: the file isn't UTF-8", and never a mangled label such as `ZoÃ«`.
 
 ## The desktop app
 
@@ -426,18 +442,19 @@ At each launch it:
 **Not yet:**
 - **Installers:** signed ones for Mac and Windows, built on GitHub's machines. `pysweph` publishes no ready-built package for Intel Macs (checked on PyPI), so those would need Swiss Ephemeris built from source.
 - **A way to back up the data.**
-- **Data entry friendlier than the admin.**
-- **An open question:** whether the window's file picker works for uploads, which nothing uses yet.
+- **Data entry friendlier than the admin,** beyond importing a CSV file.
+- **An open question:** whether the window's file picker works, which the import page needs. pywebview 6.2.1's macOS code opens a file panel for a file input (read in its source, `webView_runOpenPanelWithParameters…` in `platforms/cocoa.py`), but that hasn't been run; step 8 below checks it.
 
 **Checking it on a Mac.** The tests start the app's server and fetch pages and downloads through it, but they can't open the window. These steps check what only the window shows:
 
-1. Run the command above. Expect a window titled "Astro Research" showing the home page, with **← Back**, **Records**, **Datasets**, **Features**, **Hypotheses** and **Admin** in the header and no **Log out**. Expect a folder `~/Library/Application Support/Astro Research/` with `research.sqlite3` and `.secret_key` in it.
+1. Run the command above. Expect a window titled "Astro Research" showing the home page, with **← Back**, **Records**, **Import**, **Datasets**, **Features**, **Hypotheses** and **Admin** in the header and no **Log out**. Expect a folder `~/Library/Application Support/Astro Research/` with `research.sqlite3` and `.secret_key` in it.
 2. Follow **Admin**. Expect the admin, logged in as `local`, without having been asked for a password.
 3. Add a subject, a source, a record and a dataset as in the browser steps 1 and 30, then run the dataset from its page with `major`. Expect the run's page.
 4. Follow **the outcomes (CSV)**. Expect a dialog asking where to save `run-<id>-outcomes.csv`, and the file saved there.
 5. On a record's chart page, choose a point under **Involving**. Expect the pairs table to change without the page reloading, which shows HTMX was served.
 6. From the run's page, follow a chart, then press **← Back**. Expect the run's page again.
 7. Close the window. Expect the command to finish. Run it again: expect the window logged in again, on the home page, with step 3's record and dataset counted.
+8. Follow **Import**, and press the file field's button. Expect the system's file picker. Choose the CSV from browser step 74, choose a source, and press **Upload and check**. Expect the waiting file's page with the file's rows.
 
 ## Tests
 

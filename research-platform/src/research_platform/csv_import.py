@@ -14,7 +14,13 @@ categories by name (exactly), a number, or yes/no in any case; an empty cell is 
 value. Each row is refused with the first reason found, by its line (the header is line 1):
 birth data, then the subject, then its values. A column that's neither birth data nor a
 variable refuses the whole file, so a typo can't drop a variable. Excel's UTF-8 byte order mark
-is accepted; columns are separated by commas.
+is accepted; columns are separated by commas. A NUL character refuses the file: Python's csv
+reads it as part of a cell (observed), and PostgreSQL can't store it in text, so it stopped the
+import with a DataError instead of a refusal (observed).
+
+`import_csv` and the upload page (`upload_views`) both read a file with `read_text` and check
+it with `plan_import`, which says how to state that a subject is the same person in their own
+words: the command's option, or the page's box.
 """
 
 import csv
@@ -22,7 +28,6 @@ import math
 import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
@@ -92,6 +97,7 @@ class Plan:
     rows: list[PlannedRow]
     refused: dict[int, str]  # line: reason
     total: int
+    variables: list[Variable] = field(default_factory=list)  # those with a column, in order
 
     @property
     def new_subjects(self) -> int:
@@ -102,15 +108,32 @@ class Plan:
         return sum(len(row.values) for row in self.rows)
 
 
-def plan_import(path: Path, source: Source, *, add_to_existing: bool) -> Plan:
-    """Every row of the file checked; raises FileRefused if the file can't be read at all."""
+def read_text(content: bytes) -> str:
+    """A file's text, without Excel's byte order mark; raises FileRefused if it isn't UTF-8."""
     try:
-        text = path.read_bytes().decode("utf-8-sig")  # without Excel's byte order mark
+        return content.decode("utf-8-sig")
     except UnicodeDecodeError:
         raise FileRefused("the file isn't UTF-8") from None
-    reader = csv.DictReader(text.splitlines())
+
+
+def counted(number: int, noun: str) -> str:
+    """Such as "1 record" or "2 records"."""
+    return f"{number} {noun}" if number == 1 else f"{number} {noun}s"
+
+
+def plan_import(
+    text: str, source: Source, *, add_to_existing: bool, same_person: str = "--add-to-existing"
+) -> Plan:
+    """Every row of the text checked; raises FileRefused if the file can't be read at all.
+    `same_person` names how to say a subject is the same person, in a refusal that needs it."""
+    lines = text.splitlines()
+    for number, each in enumerate(lines, start=1):
+        if "\x00" in each:
+            raise FileRefused(f"the file has a NUL character, on line {number}")
+    reader = csv.DictReader(lines)
     variables = {v.name: v for v in Variable.objects.prefetch_related("categories")}
-    _check_columns(list(reader.fieldnames or []), variables)
+    columns = list(reader.fieldnames or [])
+    _check_columns(columns, variables)
     rows: list[PlannedRow] = []
     refused: dict[int, str] = {}
     first_lines: dict[str, int] = {}  # label: the line it's first on
@@ -119,12 +142,15 @@ def plan_import(path: Path, source: Source, *, add_to_existing: bool) -> Plan:
     for line, cells in enumerate(reader, start=2):
         total += 1
         try:
-            planned = _row(line, cells, source, variables, add_to_existing, first_lines, given)
+            planned = _row(
+                line, cells, source, variables, add_to_existing, same_person, first_lines, given
+            )
         except RowRefused as refusal:
             refused[line] = str(refusal)
             continue
         rows.append(planned)
-    return Plan(rows=rows, refused=refused, total=total)
+    used = [variables[column] for column in columns if column in variables]
+    return Plan(rows=rows, refused=refused, total=total, variables=used)
 
 
 def save(plan: Plan, source: Source, dataset: Dataset | None) -> None:
@@ -172,6 +198,7 @@ def _row(
     source: Source,
     variables: dict[str, Variable],
     add_to_existing: bool,
+    same_person: str,
     first_lines: dict[str, int],
     given: dict[tuple[str, str], int],
 ) -> PlannedRow:
@@ -186,10 +213,10 @@ def _row(
     birth_record = _birth_record(cells, source)
     subject = Subject.objects.filter(label=label).first()
     if subject is not None and not add_to_existing:
-        raise RowRefused(f"subject {label!r} already exists; --add-to-existing adds a record to it")
+        raise RowRefused(f"subject {label!r} already exists; {same_person} adds a record to it")
     if label in first_lines and not add_to_existing:
         raise RowRefused(
-            f"subject {label!r} is also on line {first_lines[label]}; --add-to-existing says "
+            f"subject {label!r} is also on line {first_lines[label]}; {same_person} says "
             "they're the same person"
         )
     values = []

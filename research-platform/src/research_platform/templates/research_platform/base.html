@@ -18,6 +18,7 @@
   ul.places a { display: block; padding: 10px 16px; border: 1px solid #8886; border-radius: 6px; text-decoration: none; }
   ul.places .count { font-variant-numeric: tabular-nums; font-weight: 600; margin-left: 6px; }
   .refusal { border-left: 4px solid #c33; padding: 8px 12px; background: #c331; }
+  ul.messages { list-style: none; padding: 8px 12px; border-left: 4px solid #3a3; background: #3a32; }
   ul.errorlist { color: #c33; padding-left: 1.2em; }
   form.settings label, form.filter label { margin-right: 12px; }
   code { font-size: 0.95em; }
@@ -31,6 +32,7 @@
   {% if desktop %}<button type="button" data-back onclick="history.back()" title="Back to the last page">← Back</button>{% endif %}
   <a href="{% url 'home' %}"><strong>Research platform</strong></a>
   <a href="{% url 'records' %}">Records</a>
+  <a href="{% url 'csv-import' %}">Import</a>
   <a href="{% url 'datasets' %}">Datasets</a>
   <a href="{% url 'features' %}">Features</a>
   <a href="{% url 'hypotheses' %}">Hypotheses</a>
@@ -39,6 +41,9 @@
   <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button type="submit">Log out</button></form>
   {% endif %}
 </header>
-<main>{% block content %}{% endblock %}</main>
+<main>
+{% if messages %}<ul class="messages">{% for message in messages %}<li>{{ message }}</li>{% endfor %}</ul>{% endif %}
+{% block content %}{% endblock %}
+</main>
 </body>
 </html>

@@ -1,0 +1,8 @@
+<div class="refusal">
+  <p><strong>{{ refusal }}</strong></p>
+  {% if refused_lines %}
+  <ul>
+    {% for line, reason in refused_lines %}<li>line {{ line }}: {{ reason }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+</div>

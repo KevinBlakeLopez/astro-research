@@ -12,12 +12,19 @@ These are kept apart, as the brief asks:
 - a `StoredChart` is one chart's chart-result-v1 text, kept once under its calculation key and
   shared by every run that produced it.
 
-Outcomes, hypotheses, analysis runs and derived configurations belong to the research layer,
-which comes later.
+What's known about each subject is in variables:
+
+- a `Variable` is a category, a number or yes/no; a category variable lists its `Category`s;
+- an `Observation` is one subject's value of one variable, from a cited source. A subject has
+  at most one per variable; one without is missing.
+
+Whether a variable is an outcome or something to control for is a hypothesis's to say. Derived
+configurations, hypotheses and analysis runs are the rest of the research layer, still to come.
 """
 
 import dataclasses
 import json
+import math
 from datetime import datetime, timedelta
 from typing import Any, assert_never
 
@@ -288,6 +295,144 @@ class RunOutcome(models.Model):
                 name="a_chart_or_a_refusal",
             ),
         ]
+
+
+class Variable(models.Model):
+    """Something recorded about subjects: a category, a number or yes/no."""
+
+    class Kind(models.TextChoices):
+        CATEGORY = "category", "category"
+        NUMBER = "number", "number"
+        YES_NO = "yes-no", "yes/no"
+
+    name = models.CharField(max_length=200, unique=True)
+    kind = models.CharField(max_length=10, choices=Kind.choices)
+    unit = models.CharField(max_length=50, blank=True, help_text="For a number, e.g. cm.")
+    description = models.TextField(blank=True)
+
+    def clean(self) -> None:
+        """A variable keeps its kind once it has values or categories, which would otherwise
+        stop meaning anything."""
+        if self.pk is None:
+            return
+        stored = Variable.objects.filter(pk=self.pk).values_list("kind", flat=True).first()
+        if stored is None or stored == self.kind:
+            return
+        if self.observations.exists():
+            raise ValidationError(f"{self.name} has values, so its kind can't change")
+        if self.categories.exists():
+            raise ValidationError(
+                f"{self.name} has categories, so it stays a category variable until they're deleted"
+            )
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class Category(models.Model):
+    """One of a category variable's values."""
+
+    variable = models.ForeignKey(Variable, on_delete=models.CASCADE, related_name="categories")
+    name = models.CharField(max_length=200)
+
+    class Meta:
+        ordering = ["pk"]  # in the order they were added
+        verbose_name_plural = "categories"
+        constraints = [
+            models.UniqueConstraint(fields=["variable", "name"], name="one_category_per_name"),
+        ]
+
+    def clean(self) -> None:
+        if self.variable_id is not None and self.variable.kind != Variable.Kind.CATEGORY:
+            raise ValidationError("only a category variable has categories")
+
+    def __str__(self) -> str:
+        return f"{self.variable.name}: {self.name}"
+
+
+_VALUE_FIELD = {
+    Variable.Kind.CATEGORY: "category",
+    Variable.Kind.NUMBER: "number",
+    Variable.Kind.YES_NO: "yes_no",
+}
+_VALUE_WORDS = {
+    Variable.Kind.CATEGORY: "one of its categories",
+    Variable.Kind.NUMBER: "a number",
+    Variable.Kind.YES_NO: "yes or no",
+}
+
+
+class Observation(models.Model):
+    """One subject's value of one variable, from a source: exactly one of a category, a number
+    and yes/no, the one its variable's kind names."""
+
+    variable = models.ForeignKey(Variable, on_delete=models.PROTECT, related_name="observations")
+    subject = models.ForeignKey(Subject, on_delete=models.PROTECT, related_name="observations")
+    source = models.ForeignKey(Source, on_delete=models.PROTECT, related_name="observations")
+    category = models.ForeignKey(
+        Category, on_delete=models.PROTECT, null=True, blank=True, related_name="observations"
+    )
+    number = models.FloatField(null=True, blank=True)
+    yes_no = models.BooleanField(null=True, blank=True)
+    notes = models.TextField(blank=True, help_text="Why this value, if sources disagree.")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["variable", "subject"], name="one_value_per_subject"),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(category__isnull=False)
+                    & models.Q(number__isnull=True)
+                    & models.Q(yes_no__isnull=True)
+                )
+                | (
+                    models.Q(category__isnull=True)
+                    & models.Q(number__isnull=False)
+                    & models.Q(yes_no__isnull=True)
+                )
+                | (
+                    models.Q(category__isnull=True)
+                    & models.Q(number__isnull=True)
+                    & models.Q(yes_no__isnull=False)
+                ),
+                name="one_value",
+            ),
+        ]
+
+    @property
+    def value(self) -> str | float | bool:
+        if self.category_id is not None:
+            return self.category.name  # type: ignore[union-attr]
+        if self.number is not None:
+            return self.number
+        assert self.yes_no is not None
+        return self.yes_no
+
+    def clean(self) -> None:
+        if self.variable_id is None:
+            return  # the field's own check says so
+        variable = self.variable
+        kind = Variable.Kind(variable.kind)
+        given = {
+            "category": self.category_id is not None,
+            "number": self.number is not None,
+            "yes_no": self.yes_no is not None,
+        }
+        wanted = _VALUE_FIELD[kind]
+        if not given[wanted] or any(is_given for f, is_given in given.items() if f != wanted):
+            raise ValidationError(
+                f"{variable.name} is a {kind.label} variable: its value is "
+                f"{_VALUE_WORDS[kind]}, and nothing else"
+            )
+        if self.category is not None and self.category.variable_id != variable.pk:
+            raise ValidationError(
+                f"{self.category.name!r} is not one of {variable.name}'s categories"
+            )
+        if self.number is not None and not math.isfinite(self.number):
+            raise ValidationError("a number must be finite")
+
+    def __str__(self) -> str:
+        return f"{self.subject}: {self.variable} = {self.value}"
 
 
 def _microseconds(duration: timedelta | None) -> int | None:

@@ -3,7 +3,8 @@
 Runs, outcomes and stored charts are what the engine produced, so they can be looked at but not
 added, changed or deleted here. A record is validated by the engine when it's saved (`Record.
 clean()`), and its page links to its chart. Two records chosen in the list open their
-comparison. A dataset's page links to its runs, where a run can be started.
+comparison. A dataset's page links to its runs, where a run can be started. Variables and
+their values are entered here too: on a variable's page, or a subject's.
 """
 
 from typing import Any
@@ -17,19 +18,62 @@ from django.utils.safestring import SafeString
 
 from research_platform.models import (
     CalculationRun,
+    Category,
     Dataset,
+    Observation,
     Record,
     RunOutcome,
     Source,
     StoredChart,
     Subject,
+    Variable,
 )
+
+
+class ObservationInline(admin.TabularInline[Observation, Any]):
+    """Values, each checked against its variable when saved."""
+
+    model = Observation
+    extra = 0
+    autocomplete_fields = ("variable", "subject", "source")
+
+
+class SubjectObservationInline(ObservationInline):
+    fields = ("variable", "category", "number", "yes_no", "source", "notes")
+
+
+class VariableObservationInline(ObservationInline):
+    fields = ("subject", "category", "number", "yes_no", "source", "notes")
+
+
+class CategoryInline(admin.TabularInline[Category, Variable]):
+    model = Category
+    extra = 0
 
 
 @admin.register(Subject)
 class SubjectAdmin(admin.ModelAdmin[Subject]):
     list_display = ("label",)
     search_fields = ("label", "notes")
+    inlines = (SubjectObservationInline,)
+
+
+@admin.register(Variable)
+class VariableAdmin(admin.ModelAdmin[Variable]):
+    """A variable, its categories if it's a category variable, and every subject's value."""
+
+    list_display = ("name", "kind", "unit")
+    list_filter = ("kind",)
+    search_fields = ("name", "description")
+    inlines = (CategoryInline, VariableObservationInline)
+
+
+@admin.register(Observation)
+class ObservationAdmin(admin.ModelAdmin[Observation]):
+    list_display = ("variable", "subject", "value", "source")
+    list_filter = ("variable",)
+    search_fields = ("subject__label", "variable__name")
+    autocomplete_fields = ("variable", "subject", "source")
 
 
 @admin.register(Source)

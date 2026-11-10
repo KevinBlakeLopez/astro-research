@@ -15,8 +15,27 @@ Django owns the schema (`research_platform/models.py` and its migrations). The w
 | `CalculationRun` | One run over a dataset: its chart settings, engine version and ephemeris provenance, its status, start and end, and how many charts it computed, reused and saw refused. |
 | `RunOutcome` | What a run made of one record: its stored chart, or the engine's refusal (class and message). One per record per run, and always exactly one of the two (database constraints). |
 | `StoredChart` | One chart's `chart-result-v1` document (`RESULT_FORMAT.md`), under its calculation key, shared by every run that produced it. |
+| `Variable` | Something recorded about subjects: a unique name, a kind (category, number or yes/no), a unit for a number, a description. |
+| `Category` | One of a category variable's values, unique within it, in the order added. |
+| `Observation` | One subject's value of one variable, from a cited source, with notes. At most one per subject and variable, and exactly one of a category, a number and yes/no (database constraints). |
 
-Outcomes, hypotheses, analysis runs and derived configurations belong to the research layer, which comes later.
+## The research layer
+
+It's being built in this order: what's known about subjects (variables, below), then derived configurations, hypotheses and analysis runs.
+
+**Analyses will be Python functions you register,** not tests built into the platform. A hypothesis will name one. The platform will run it on the calculation run the hypothesis names, and record every result, null ones included, with the hypothesis, the analysis code's hash, the seed and the run's provenance. A hypothesis will be locked once it has a result.
+
+This keeps the methods yours, as the Phase 1 report asks for research rules. And because every result is recorded whatever it shows, it guards against keeping only the tests that worked. The other options were statistics in your own scripts with results recorded by hand, or a fixed set of built-in tests; the first records only what you record, and the second chooses methods for you.
+
+**Variables.** A variable holds outcomes and anything to control for alike: whether it's an outcome is the hypothesis's to say.
+- **Each value is checked against its variable** when it's validated (on save in the admin):
+  - a category variable's value is one of its categories;
+  - a number variable's value is a finite number;
+  - a yes/no variable's value is yes or no;
+  - nothing else is set.
+- **A value belongs to the subject,** whichever record a dataset uses, and cites its own source, which may not be the birth data's. If sources disagree, you choose, and the notes say why. A subject with no value is missing, and nothing fills it in.
+- **Nothing is left meaning something it can't.** A category in use can't be deleted: the admin refuses, naming the values that use it (observed). A variable with values can't change its kind, nor can one with categories become another kind until they're deleted.
+- **Not yet:** dates and events (an event has its own time and perhaps a place, so it's closer to a record), importing values from CSV, and downloading a dataset's values.
 
 **Records, field by field.** A record's `reading` is ISO 8601 text. It's aware (`+00:00`) for UTC and the naive wall-clock reading otherwise, since a Django `DateTimeField` can't hold a naive reading while times are kept zone-aware. The other fields are `zone`, `utc_offset_us` (the offset of an offset time, or the stated offset of a zoned one), `accept_pre_1970_tzdb`, `latitude`, `longitude`, `elevation_m`, `time_resolution` and `stated_uncertainty_us`.
 
@@ -68,7 +87,7 @@ The command prints a summary such as `run 3: 180 charts (12 computed, 168 reused
 
 It runs on this machine only: it answers on 127.0.0.1 and localhost, and every page needs a login.
 
-- **The admin** (`/admin/`) is where subjects, sources, records and datasets are entered. Saving a record asks the engine to build it, so the engine's reason for refusing one shows on the form. Runs, outcomes and stored charts can be looked at but not added, changed or deleted. A record's admin page links to its chart, and a dataset's to its page.
+- **The admin** (`/admin/`) is where subjects, sources, records and datasets are entered. Saving a record asks the engine to build it, so the engine's reason for refusing one shows on the form. Runs, outcomes and stored charts can be looked at but not added, changed or deleted. A record's admin page links to its chart, and a dataset's to its page. Variables are entered here too: a variable's page lists its categories and every subject's value, and a subject's page lists its values.
 - **A record's chart** (`/records/<id>/chart/`) is computed on request, under the settings in its address: `aspects` (degrees and/or `major`, `octile`) and `time_scale` (default `ut1-from-iers`). So an address reproduces exactly what the page shows. It shows:
   - the resolved time and where UT1 came from;
   - positions, angles and every pair, to six decimals (about 4 mas), formatted as Python formats them;
@@ -124,6 +143,7 @@ It runs on this machine only: it answers on 127.0.0.1 and localhost, and every p
   - **Each record's chart and JSON document** are a link away, with the same settings. If the engine refuses either record, the page shows that record's refusal instead of a comparison.
 - **Datasets** (`/datasets/`, linked from every page's header) lists each dataset by name, with its number of records and its latest run.
 - **A dataset** (`/datasets/<id>/`) shows its description, its runs newest first (status, settings, counts, start and duration), and its records (subject, reading, zone, source, and a link to the record's chart).
+  - **What's known about its subjects:** each variable, by name, with how many of the dataset's subjects have a value ("2 of 3"). A subject with several records counts once. Then each category's count, zeros included, a number's range and unit, or the yes and no counts.
   - **Starting a run:** the page's form names the aspect angles and time scale, as the chart page's does, and is a POST with Django's CSRF check. The run is `run_dataset`'s, in the request, and its page opens when it's done, finished or failed. A failed run's traceback goes to the server's log.
   - **Up to 500 records.** 500 records took 4.1–4.3 s when every chart was computed, and 0.6 s run again (measured). A larger dataset is refused with the `compute_dataset` command to run it with.
 - **A run** (`/runs/<id>/`) shows what it ran with:
@@ -212,6 +232,11 @@ cd research-platform && RESEARCH_DEBUG=1 uv run python manage.py runserver 127.0
 38. On step 31's run page, follow **chart values**. Expect `run-<id>-chart-values.csv` with two rows, one for each record with a chart, and `false` for `beyond_polar_circle`.
 39. Follow **points**. Expect `run-<id>-points.csv` with 34 rows, 17 for each of the two records, and no row for step 7's refused record.
 40. Follow **pairs**. Expect `run-<id>-pairs.csv` with 272 rows and no deviation columns. In a spreadsheet, `separation` minus 90 for any pair is that pair's deviation from a square, as the stored chart's page from step 33 shows it.
+41. In the admin, add a variable `profession` of kind **category**, with the categories `athlete` and `musician`, and save. In its value rows, add step 1's subject with the category `profession: athlete` and a source, and save. Expect it saved.
+42. Add another value row, for step 9's subject, with the number `5` and no category, and save. Expect "profession is a category variable: its value is one of its categories, and nothing else" on that row, and that row not saved.
+43. Open step 1's subject in the admin. Expect `profession` and `profession: athlete` among its values.
+44. Open the `sample` dataset's page. Expect "What's known about its subjects" with `profession` at "1 of 2" and "athlete 1 · musician 0".
+45. On the variable's admin page, tick **Delete** on the `athlete` category and save. Expect the admin to refuse, naming step 1's subject's value, and `athlete` still there.
 
 ## Tests
 

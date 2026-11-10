@@ -43,6 +43,26 @@
 <p>None yet.</p>
 {% endif %}
 
+<h2>What's known about its subjects</h2>
+{% if coverage %}
+<div class="scroll"><table>
+  <thead><tr><th class="name">Variable</th><th class="name">Kind</th><th>Subjects with a value</th><th class="name">Values</th></tr></thead>
+  <tbody>
+  {% for row in coverage %}
+  <tr data-variable="{{ row.variable.pk }}">
+    <td class="name"><a href="{% url 'admin:research_platform_variable_change' row.variable.pk %}">{{ row.variable.name }}</a></td>
+    <td class="name">{{ row.variable.get_kind_display }}</td>
+    <td class="coverage">{{ row.covered }} of {{ row.subjects }}</td>
+    <td class="name">{{ row.summary }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+<p>A subject with several records here counts once. Whether a variable is an outcome or something to control for is for a hypothesis to say.</p>
+{% else %}
+<p>No variables yet. <a href="{% url 'admin:research_platform_variable_add' %}">Add one in the admin</a>.</p>
+{% endif %}
+
 <h2>Records ({{ size }})</h2>
 <div class="scroll"><table>
   <thead><tr><th class="name">Record</th><th class="name">Subject</th><th class="name">Reading</th><th class="name">Zone</th><th class="name">Source</th><th class="name">Chart</th></tr></thead>

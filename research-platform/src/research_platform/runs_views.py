@@ -36,7 +36,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 
 from django.contrib.auth.decorators import login_required
-from django.db.models import Count, Max, QuerySet
+from django.db.models import Count, Max, Min, QuerySet
 from django.http import HttpRequest, HttpResponse, StreamingHttpResponse
 from django.http.response import HttpResponseBase
 from django.shortcuts import get_object_or_404, redirect, render
@@ -52,7 +52,13 @@ from research_platform.chart_settings import (
     time_scale_name,
 )
 from research_platform.invalid_requests import InvalidRequest
-from research_platform.models import CalculationRun, Dataset, RunOutcome, StoredChart
+from research_platform.models import (
+    CalculationRun,
+    Dataset,
+    RunOutcome,
+    StoredChart,
+    Variable,
+)
 from research_platform.runner import finish_run, start_run
 from research_platform.views import Refusal, _ephemeris
 
@@ -170,6 +176,16 @@ class DescribedRun:
     aspects: str  # e.g. "0, 60, 90, 120, 180"
     time_scale: str  # e.g. "ut1-from-iers"
     duration: timedelta | None
+
+
+@dataclass(frozen=True)
+class Coverage:
+    """How many of a dataset's subjects have a value of a variable, and what the values are."""
+
+    variable: Variable
+    covered: int
+    subjects: int
+    summary: str  # each category's count, the numbers' range, or the yes and no counts
 
 
 @dataclass(frozen=True)
@@ -321,11 +337,40 @@ def _dataset_context(chosen: Dataset, aspects: str, time_scale: str) -> dict[str
         "records": records,
         "size": len(records),
         "runs": [_described(each) for each in runs],
+        "coverage": _coverage(chosen),
         "aspects": aspects,
         "time_scale": time_scale,
         "time_scales": sorted(TIME_SCALES),
         "limit": RUN_LIMIT,
     }
+
+
+def _coverage(chosen: Dataset) -> list[Coverage]:
+    """Each variable, by name, among the dataset's subjects: a subject with several records in
+    it counts once."""
+    subjects = set(chosen.records.values_list("subject_id", flat=True))
+    rows = []
+    for variable in Variable.objects.order_by("name").prefetch_related("categories"):
+        observations = variable.observations.filter(subject_id__in=subjects)
+        covered = observations.count()
+        if variable.kind == Variable.Kind.CATEGORY:
+            counts = dict(
+                observations.values("category_id")
+                .annotate(n=Count("pk"))
+                .values_list("category_id", "n")
+            )
+            summary = " · ".join(
+                f"{each.name} {counts.get(each.pk, 0)}" for each in variable.categories.all()
+            )
+        elif variable.kind == Variable.Kind.NUMBER:
+            span = observations.aggregate(low=Min("number"), high=Max("number"))
+            unit = f" {variable.unit}" if variable.unit else ""
+            summary = f"{span['low']!r} to {span['high']!r}{unit}" if covered else ""
+        else:
+            yes = observations.filter(yes_no=True).count()
+            summary = f"yes {yes} · no {covered - yes}"
+        rows.append(Coverage(variable, covered, len(subjects), summary))
+    return rows
 
 
 def _run_settings(chosen: Dataset, aspects: str, time_scale: str) -> ChartSettings:

@@ -77,15 +77,19 @@ This keeps methods out of the engine, as the Phase 1 report asks for research ru
 
 ## Running it
 
-The database is the PostgreSQL 18.6 of `research-platform/compose.yaml`, on `127.0.0.1:55432` with local-only credentials. Docker is needed; on this machine it runs under colima.
+**The database is SQLite,** in `research-platform/research.sqlite3`, which git ignores, unless `RESEARCH_DATABASE=postgresql` chooses PostgreSQL. Nothing needs to be running for SQLite. The platform's tests pass on both (observed). `RESEARCH_DATA_DIR` moves the database and the session key to another folder, which is how the desktop app keeps them in its own (see below).
+
+```bash
+uv sync --all-packages
+```
+
+**PostgreSQL** is the 18.6 of `research-platform/compose.yaml`, on `127.0.0.1:55432` with local-only credentials, and needs Docker; on this machine it runs under colima. Start it, and set `RESEARCH_DATABASE=postgresql` for every command below:
 
 ```bash
 docker compose -f research-platform/compose.yaml up -d
 ```
 
-```bash
-uv sync --all-packages
-```
+Then:
 
 ```bash
 cd research-platform && uv run python manage.py migrate
@@ -95,7 +99,7 @@ cd research-platform && uv run python manage.py migrate
 cd research-platform && uv run python manage.py compute_dataset NAME --aspects major,octile
 ```
 
-The command prints a summary such as `run 3: 180 charts (12 computed, 168 reused), 2 refused`. `--time-scale` takes the same values as the scripts and defaults to `ut1-from-iers`. Set `RESEARCH_DB_HOST`, `RESEARCH_DB_PORT`, `RESEARCH_DB_NAME`, `RESEARCH_DB_USER` and `RESEARCH_DB_PASSWORD` to use another database, and `RESEARCH_EPHE_DIR` for another ephemeris folder.
+The command prints a summary such as `run 3: 180 charts (12 computed, 168 reused), 2 refused`. `--time-scale` takes the same values as the scripts and defaults to `ut1-from-iers`. With PostgreSQL chosen, set `RESEARCH_DB_HOST`, `RESEARCH_DB_PORT`, `RESEARCH_DB_NAME`, `RESEARCH_DB_USER` and `RESEARCH_DB_PASSWORD` to use another server. `RESEARCH_EPHE_DIR` chooses another ephemeris folder. The SQLite database and the PostgreSQL one are separate: an account or data made in one isn't in the other.
 
 ## Importing charts from AstroChart Bridge
 
@@ -218,7 +222,7 @@ It runs on this machine only: it answers on 127.0.0.1 and localhost, and every p
 - **HTMX** 2.0.11 is served from the platform's static files, never from another site. It was taken from the npm package, after the package matched the registry's SHA-512, and its SHA-256 is pinned in the tests.
 - **The session-signing key** comes from `RESEARCH_SECRET_KEY`. Otherwise it's made on first use in `research-platform/.secret_key`, which only you can read and git ignores.
 
-**Running it.** With the database running (see above):
+**Running it.** With the database chosen (see above):
 
 ```bash
 cd research-platform && uv run python manage.py migrate
@@ -292,12 +296,49 @@ cd research-platform && RESEARCH_DEBUG=1 uv run python manage.py runserver 127.0
 55. Add another contact feature with `mars` ticked among its own other points. Expect "a point can't be in contact with itself" above the form, with what you entered still there.
 56. Add a **sign** feature for `sun`, and show it for step 31's run. Expect all 12 signs in the counts, with the records' signs counted.
 
+## The desktop app
+
+The platform also runs as a desktop app, in its own window. It's for researchers who aren't developers: nothing needs installing but the app, and their data stays on their own computer. For now it runs from the source checkout; installers for Mac and Windows come later.
+
+```bash
+uv run --package research-platform --extra desktop python -m research_platform.desktop
+```
+
+At each launch it:
+
+1. **keeps its data in the system's folder for app data,** readable only by you: `~/Library/Application Support/Astro Research/` on a Mac, `%APPDATA%\Astro Research\` on Windows, and `~/.local/share/Astro Research/` (or `$XDG_DATA_HOME`) elsewhere. That's its SQLite database and its session key. "Astro Research" is a placeholder until the app is named. The app always uses SQLite, whatever `RESEARCH_DATABASE` says.
+2. **applies the database's migrations,** so a new version upgrades the data as it opens. It makes the one local account the first time: an admin with no usable password, so nothing but the app's window can log in as it.
+3. **serves the platform with [waitress](https://github.com/Pylons/waitress)** (3.0.2, ZPL 2.1) on 127.0.0.1 at a free port, so only this computer can reach it. Pages still need a login. It serves the platform's static files (HTMX) itself, since Django serves them only in debug mode.
+4. **opens a [pywebview](https://github.com/r0x0r/pywebview) window** (6.2.1, BSD-3-Clause, with pyobjc on a Mac, MIT). The window opens a link holding a secret made for this launch, which logs it in once and shows the datasets page. A used, wrong or unarmed link is not found, and a wrong guess leaves the right one working. Downloads are switched on (pywebview turns them off unless asked), and the window keeps nothing between launches, so each launch logs in afresh. There's no **Log out** in the app: there'd be no way back in without restarting it. Closing the window stops the server.
+
+`--prepare FOLDER` does steps 1 and 2 in a folder of your choosing and exits, without a window. pywebview is an optional dependency (`--extra desktop`), so the tests and the web interface don't install it.
+
+**Not yet:**
+- **Navigation for a window:** it has no Back button or address bar, and the pages assume a browser's.
+- **Installers:** signed ones for Mac and Windows, built on GitHub's machines. `pysweph` publishes no ready-built package for Intel Macs (checked on PyPI), so those would need Swiss Ephemeris built from source.
+- **A way to back up the data.**
+- **Data entry friendlier than the admin.**
+- **An open question:** whether the window's file picker works for uploads, which nothing uses yet.
+
+**Checking it on a Mac.** The tests start the app's server and fetch pages and downloads through it, but they can't open the window. These steps check what only the window shows:
+
+1. Run the command above. Expect a window titled "Astro Research" showing the datasets page, with **Datasets** and **Admin** in the header and no **Log out**. Expect a folder `~/Library/Application Support/Astro Research/` with `research.sqlite3` and `.secret_key` in it.
+2. Follow **Admin**. Expect the admin, logged in as `local`, without having been asked for a password.
+3. Add a subject, a source, a record and a dataset as in the browser steps 1 and 30, then run the dataset from its page with `major`. Expect the run's page.
+4. Follow **the outcomes (CSV)**. Expect a dialog asking where to save `run-<id>-outcomes.csv`, and the file saved there.
+5. On a record's chart page, choose a point under **Involving**. Expect the pairs table to change without the page reloading, which shows HTMX was served.
+6. Close the window. Expect the command to finish. Run it again: expect the window logged in again, with step 3's dataset still listed.
+
 ## Tests
 
-The engine's tests (`uv run pytest` from the repository root) need no database. The platform's tests need the database and the ephemeris files, and fail rather than skip without them:
+The engine's tests (`uv run pytest` from the repository root) need no database. The platform's tests run on SQLite unless `RESEARCH_DATABASE=postgresql` is set, when they need that database running. They also need the ephemeris files, and fail rather than skip without what they need:
 
 ```bash
 cd research-platform && uv run pytest
+```
+
+```bash
+cd research-platform && RESEARCH_DATABASE=postgresql uv run pytest
 ```
 
 ```bash

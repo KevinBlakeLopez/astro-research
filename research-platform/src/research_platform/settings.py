@@ -1,18 +1,17 @@
 """Django settings for the research platform.
 
 It runs on this machine only: it answers on 127.0.0.1 and localhost, and every page needs a login.
-The database defaults to the local PostgreSQL of research-platform/compose.yaml; set the
-RESEARCH_DB_* variables to use another.
-
-The secret key signs sessions. It comes from RESEARCH_SECRET_KEY, or else from
-research-platform/.secret_key, which is made on first use and kept out of git.
+Where its data is kept, its database and its session key come from the environment
+(`configuration`): by default SQLite and the key in research-platform/, both kept out of git;
+RESEARCH_DATABASE=postgresql chooses PostgreSQL. RESEARCH_DESKTOP=1 is set by the desktop app.
 """
 
 import os
-import secrets
 from pathlib import Path
 
 import django_stubs_ext
+
+from research_platform import configuration
 
 # Lets classes written for the type checker, such as admin.ModelAdmin[Record], run.
 django_stubs_ext.monkeypatch()
@@ -21,18 +20,10 @@ PLATFORM = Path(__file__).resolve().parents[2]
 REPO = PLATFORM.parent
 
 
-def _secret_key() -> str:
-    if key := os.environ.get("RESEARCH_SECRET_KEY"):
-        return key
-    path = PLATFORM / ".secret_key"
-    if not path.exists():
-        path.write_text(secrets.token_urlsafe(50))
-        path.chmod(0o600)
-    return path.read_text().strip()
-
-
-SECRET_KEY = _secret_key()
+DATA_DIR = configuration.data_directory(os.environ, PLATFORM)
+SECRET_KEY = configuration.secret_key(os.environ, DATA_DIR)
 DEBUG = os.environ.get("RESEARCH_DEBUG") == "1"
+RESEARCH_DESKTOP = os.environ.get("RESEARCH_DESKTOP") == "1"
 ALLOWED_HOSTS = ["127.0.0.1", "localhost"]
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -62,6 +53,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "research_platform.context_processors.desktop",
             ],
         },
     }
@@ -73,16 +65,7 @@ USE_TZ = True
 TIME_ZONE = "UTC"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "HOST": os.environ.get("RESEARCH_DB_HOST", "127.0.0.1"),
-        "PORT": os.environ.get("RESEARCH_DB_PORT", "55432"),
-        "NAME": os.environ.get("RESEARCH_DB_NAME", "research"),
-        "USER": os.environ.get("RESEARCH_DB_USER", "research"),
-        "PASSWORD": os.environ.get("RESEARCH_DB_PASSWORD", "research-local-only"),
-    }
-}
+DATABASES = {"default": configuration.database(os.environ, DATA_DIR)}
 
 # The pinned Swiss Ephemeris files (scripts/fetch_ephemeris.py).
 EPHE_DIR = Path(os.environ.get("RESEARCH_EPHE_DIR", REPO / "ephe"))

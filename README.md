@@ -2,7 +2,7 @@
 
 A headless Python engine for exploratory astrology research. It computes astronomical positions and raw measurements on Swiss Ephemeris, validated against independent references, and fails closed when an input or its environment can't be trusted.
 
-The engine itself has no web application, database or GUI. The research platform in `research-platform/`, a separate Django package, stores subjects, sources, records, datasets and what's known about each subject in PostgreSQL, runs the engine over them, and has a local web interface: the admin; a chart page, a birth-time sensitivity page, a nearest-eclipses page and a parans page for each record; a comparison of any two records; datasets, where runs are started and their outcomes and stored charts read and downloaded; and features defined from charts, such as a contact within an orb or a sign, with their values across a run. Charts can be imported from AstroChart Bridge's `.astrochart.json` files.
+The engine itself has no web application, database or GUI. The research platform in `research-platform/`, a separate Django package, stores subjects, sources, records, datasets and what's known about each subject in SQLite (or PostgreSQL), runs the engine over them, can run as a desktop app in its own window, and has a local web interface: the admin; a chart page, a birth-time sensitivity page, a nearest-eclipses page and a parans page for each record; a comparison of any two records; datasets, where runs are started and their outcomes and stored charts read and downloaded; and features defined from charts, such as a contact within an orb or a sign, with their values across a run. Charts can be imported from AstroChart Bridge's `.astrochart.json` files.
 
 ## What it computes
 

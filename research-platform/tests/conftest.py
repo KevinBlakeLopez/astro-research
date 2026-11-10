@@ -1,7 +1,8 @@
 """Shared fixtures for the platform's tests.
 
-They need the PostgreSQL of research-platform/compose.yaml and the pinned ephemeris files, and
-fail rather than skip when either is missing. The records are synthetic; no real person's birth
+They need the pinned ephemeris files, and the PostgreSQL of research-platform/compose.yaml when
+RESEARCH_DATABASE=postgresql chooses it (SQLite otherwise), and fail rather than skip when what
+they need is missing. The records are synthetic; no real person's birth
 data is used as a fixture.
 """
 
@@ -22,6 +23,8 @@ START_DATABASE = "docker compose -f research-platform/compose.yaml up -d"
 @pytest.fixture(scope="session", autouse=True)
 def database_is_running() -> None:
     db = settings.DATABASES["default"]
+    if db["ENGINE"] != "django.db.backends.postgresql":
+        return  # SQLite needs nothing running
     try:
         psycopg.connect(
             host=db["HOST"],

@@ -172,7 +172,11 @@ def test_a_subject_has_one_value_per_variable(
     second = observed(height, subject, Source.objects.create(citation="Another"), number=171.0)
     with pytest.raises(ValidationError):
         second.full_clean()
-    with transaction.atomic(), pytest.raises(IntegrityError, match="one_value_per_subject"):
+    # PostgreSQL names the constraint; SQLite names its columns (observed).
+    refused = (
+        "one_value_per_subject|UNIQUE constraint failed: research_platform_observation.variable_id"
+    )
+    with transaction.atomic(), pytest.raises(IntegrityError, match=refused):
         second.save()
     other = Subject.objects.create(label="subject-2")
     observed(height, other, source, number=180.0).full_clean()  # another subject is fine

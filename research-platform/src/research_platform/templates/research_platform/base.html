@@ -29,7 +29,7 @@
   <a href="{% url 'datasets' %}">Datasets</a>
   <a href="{% url 'features' %}">Features</a>
   <a href="{% url 'admin:index' %}">Admin</a>
-  {% if user.is_authenticated %}
+  {% if user.is_authenticated and not desktop %}{# the app's account can't log back in #}
   <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button type="submit">Log out</button></form>
   {% endif %}
 </header>

@@ -15,3 +15,6 @@ dist/
 
 # The research platform's local session-signing key (research-platform/settings.py)
 /research-platform/.secret_key
+
+# The research platform's SQLite database, when run from source (research-platform/settings.py)
+/research-platform/research.sqlite3*

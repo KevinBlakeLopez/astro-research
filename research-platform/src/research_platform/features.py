@@ -103,6 +103,7 @@ class Kind:
     check: Callable[[Settings], Settings]  # the settings in standard form, or ValidationError
     describe: Callable[[Settings], str]
     value: Callable[[Settings, Chart], Value]
+    value_kind: str  # "yes/no" or "category", which analyses check they can take
     possible: tuple[Value, ...]  # every value it can have, in the order they're counted
     form: type[FeatureForm]
 
@@ -180,6 +181,7 @@ KINDS = {
         check=_check_contact,
         describe=_describe_contact,
         value=_contact_value,
+        value_kind="yes/no",
         possible=(True, False),
         form=ContactForm,
     ),
@@ -189,6 +191,7 @@ KINDS = {
         check=_check_sign,
         describe=lambda settings: f"{settings['point']}'s sign",
         value=_sign_value,
+        value_kind="category",
         possible=SIGNS,
         form=SignForm,
     ),

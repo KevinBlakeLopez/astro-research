@@ -18,9 +18,11 @@ from django.utils.html import format_html
 from django.utils.safestring import SafeString
 
 from research_platform.models import (
+    AnalysisRun,
     CalculationRun,
     Category,
     Dataset,
+    Hypothesis,
     ImportedChart,
     Observation,
     Record,
@@ -200,3 +202,18 @@ class ImportedChartAdmin(ProducedByTheEngine[ImportedChart]):
 @admin.register(StoredChart)
 class StoredChartAdmin(ProducedByTheEngine[StoredChart]):
     list_display = ("calculation_key", "stored_at")
+
+
+@admin.register(Hypothesis)
+class HypothesisAdmin(admin.ModelAdmin[Hypothesis]):
+    """Hypotheses until they have pages of their own; checked on save, locked once they have a
+    result. `run_hypothesis NAME` runs one."""
+
+    list_display = ("name", "feature", "variable", "category", "run", "analysis")
+    search_fields = ("name", "statement")
+
+
+@admin.register(AnalysisRun)
+class AnalysisRunAdmin(ProducedByTheEngine[AnalysisRun]):
+    list_display = ("pk", "hypothesis", "ran_at", "engine_version")
+    list_filter = ("hypothesis",)

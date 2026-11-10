@@ -136,6 +136,15 @@ It runs on this machine only: it answers on 127.0.0.1 and localhost, and every p
 - **A run's downloads:**
   - **Outcomes as CSV** (`run-<id>-outcomes.csv`): one row per record, in record order. The columns are `record_id`, `subject`, `reading`, `outcome` (`chart` or `refusal`), `calculation_key`, `refusal_class` and `refusal_message`. Line endings are `\r\n`, as RFC 4180 has them.
   - **Charts as JSON Lines** (`run-<id>-charts.jsonl`): each stored chart once, in the order of its first record, exactly as stored, so each line reads back with `chart_from_json`. Records with the same inputs, say two sources that agree, share a chart, and the CSV shows which records point to it. The file is streamed: 500 charts came to 56.5 MiB in 0.18 s (measured).
+- **A run's tidy tables** (CSV) are built from its stored charts when downloaded. Each has a row per record with a chart, in record order, led by `record_id`, `subject` and `calculation_key`, so they join with each other and with the outcomes CSV.
+  - **Chart values** (`run-<id>-chart-values.csv`): `utc`, `jd_ut1`, `jd_tt`, `delta_t_s`, `ut1_minus_utc_s`, `armc`, `true_obliquity` and `beyond_polar_circle` (`true` or `false`).
+  - **Points** (`run-<id>-points.csv`), a row per point: the 17 points are the bodies, the lunar points, the Ascendant, MC and Vertex. The columns are `point`, `longitude`, `latitude`, `declination`, `longitude_speed` and `declination_speed`. The bodies' right ascension, distance and other speeds are in the JSON Lines file.
+  - **Pairs** (`run-<id>-pairs.csv`), a row per pair (136): `point_a`, `point_b`, `longitude_difference`, `separation`, `separation_rate`, `great_circle_separation`, `declination_difference`, `declination_sum`, `declination_difference_rate` and `declination_sum_rate`.
+  - **No deviations from aspect angles.** Each is exactly `separation - angle`, and its rate is `separation_rate`: all 272,000 deviations of 200 charts with 10 angles matched, after a JSON round trip (observed). The run's angles are on its page.
+  - **Which rows:** refused records have none, records that share a chart each get its rows, and a failed run's tables are just their headers.
+  - **Values** are written as Python's repr, which Python's `float()` reads back exactly. pandas' documentation says its default number parser isn't always exact and `float_precision="round_trip"` is; that hasn't been checked here.
+  - **A stored document this engine can't read** refuses the table with a 422 and the reason, before anything is sent, rather than stopping a download partway. So every document is read twice: once to check it, then a batch of records at a time to write the rows.
+  - **Cost:** for 500 charts, each table took 2.5–2.8 s, 1.2 s of it before the first byte. Pairs came to 68,000 rows and 16.2 MiB, points to 8,500 rows and 1.5 MiB (measured).
 - **A stored chart** (`/charts/<calculation key>/`) reads the stored document back and shows it with the chart page's tables and every pair. There's no settings form, since a stored chart's settings are fixed. It shows the engine version that computed it, from the document's inputs, and says so if that isn't the running one. A document this engine can't read shows why, with a 422.
 - **Refusals.** Settings, offsets or a filter a page can't use are refused with a 400, and the reason is shown where it happened, with debug mode on or off:
   - **on a page:** above its forms, which keep what was submitted, with no results;
@@ -200,6 +209,9 @@ cd research-platform && RESEARCH_DEBUG=1 uv run python manage.py runserver 127.0
 35. Follow the dataset's name in the heading, and run it again with `major`. Expect "0 computed · 2 reused · 1 refused", and on the dataset's page the new run listed first.
 36. On the dataset's page, enter `banana` as the aspect angles and press **Run**. Expect "That can't be run: aspects: 'banana' is neither an angle nor a set name" above the form, with `banana` still in it, and no new run.
 37. On the dataset's page, open Firefox's console and run `fetch(document.querySelector('form.settings').action, {method: 'POST', body: new URLSearchParams({aspects: 'major'})}).then(r => r.status)`. Expect `403`, since the request has no CSRF token, and no new run after reloading.
+38. On step 31's run page, follow **chart values**. Expect `run-<id>-chart-values.csv` with two rows, one for each record with a chart, and `false` for `beyond_polar_circle`.
+39. Follow **points**. Expect `run-<id>-points.csv` with 34 rows, 17 for each of the two records, and no row for step 7's refused record.
+40. Follow **pairs**. Expect `run-<id>-pairs.csv` with 272 rows and no deviation columns. In a spreadsheet, `separation` minus 90 for any pair is that pair's deviation from a square, as the stored chart's page from step 33 shows it.
 
 ## Tests
 

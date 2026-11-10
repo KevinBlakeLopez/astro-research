@@ -10,6 +10,17 @@ stored chart once, in the order of its first record, exactly as stored. Records 
 inputs share a chart, and the CSV says which. A chart is about 116 KiB (500 came to 56.5 MiB,
 measured), so that download is streamed, 50 charts at a time.
 
+A run's measurements also download as three tidy tables (CSV), built from its stored charts
+when downloaded: chart values (a row per record), points (a row per record and point) and pairs
+(a row per record and pair). Each row is led by the record's id, its subject and the calculation
+key, so they join with each other and with the outcomes CSV. Refused records have no rows, and
+records that share a chart each get its rows. Values are Python's repr, which reads back
+exactly. Deviations from aspect angles aren't written: each is exactly separation - angle, with
+the separation's rate (272,000 checked after a JSON round trip). Every document is read once to
+check this engine can read it, so an unreadable one refuses the table (422) before anything is
+sent, and then again, a batch of records at a time, to write the rows. For 500 charts a table
+took 2.5-2.8 s, 1.2 s of it before the first byte; pairs are 68,000 rows and 16.2 MiB (measured).
+
 A stored chart's page reads its document back (`chart_from_json`) and shows it with the chart
 page's tables. Its settings are fixed, and the engine version is the one that computed it, which
 may not be the one running.
@@ -20,18 +31,19 @@ import io
 import json
 import logging
 import shlex
-from collections.abc import Iterator
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from datetime import timedelta
 
 from django.contrib.auth.decorators import login_required
 from django.db.models import Count, Max, QuerySet
 from django.http import HttpRequest, HttpResponse, StreamingHttpResponse
+from django.http.response import HttpResponseBase
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
-from astro_research.chart import ENGINE_VERSION, ChartSettings
-from astro_research.result_format import InvalidChartDocument
+from astro_research.chart import ENGINE_VERSION, Chart, ChartSettings
+from astro_research.result_format import InvalidChartDocument, chart_from_json
 from research_platform.chart_settings import (
     DEFAULT_TIME_SCALE,
     TIME_SCALES,
@@ -58,6 +70,96 @@ CSV_COLUMNS = (
     "refusal_message",
 )
 DOCUMENTS_AT_A_TIME = 50
+LEAD_COLUMNS = ("record_id", "subject", "calculation_key")
+
+
+@dataclass(frozen=True)
+class Table:
+    """A tidy table of a run's charts: its file's name, its columns after the lead columns, and
+    a chart's rows."""
+
+    name: str
+    columns: tuple[str, ...]
+    rows: Callable[[Chart], Iterator[list[object]]]
+
+
+def _chart_value_rows(chart: Chart) -> Iterator[list[object]]:
+    time, angles = chart.time, chart.angles
+    yield [
+        time.instant.utc.isoformat(),
+        repr(time.jd_ut1),
+        repr(time.jd_tt),
+        repr(time.delta_t_s),
+        repr(time.ut1_minus_utc_s),
+        repr(angles.armc),
+        repr(angles.true_obliquity),
+        "true" if angles.beyond_polar_circle else "false",
+    ]
+
+
+def _point_rows(chart: Chart) -> Iterator[list[object]]:
+    for point in chart.points:
+        yield [
+            point.point.value,
+            repr(point.longitude),
+            repr(point.latitude),
+            repr(point.declination),
+            repr(point.longitude_speed),
+            repr(point.declination_speed),
+        ]
+
+
+def _pair_rows(chart: Chart) -> Iterator[list[object]]:
+    for pair in chart.pairs:
+        yield [
+            pair.a.point.value,
+            pair.b.point.value,
+            repr(pair.longitude_difference),
+            repr(pair.separation),
+            repr(pair.separation_rate),
+            repr(pair.great_circle_separation),
+            repr(pair.declination_difference),
+            repr(pair.declination_sum),
+            repr(pair.declination_difference_rate),
+            repr(pair.declination_sum_rate),
+        ]
+
+
+CHART_VALUES = Table(
+    "chart-values",
+    (
+        "utc",
+        "jd_ut1",
+        "jd_tt",
+        "delta_t_s",
+        "ut1_minus_utc_s",
+        "armc",
+        "true_obliquity",
+        "beyond_polar_circle",
+    ),
+    _chart_value_rows,
+)
+POINTS = Table(
+    "points",
+    ("point", "longitude", "latitude", "declination", "longitude_speed", "declination_speed"),
+    _point_rows,
+)
+PAIRS = Table(
+    "pairs",
+    (
+        "point_a",
+        "point_b",
+        "longitude_difference",
+        "separation",
+        "separation_rate",
+        "great_circle_separation",
+        "declination_difference",
+        "declination_sum",
+        "declination_difference_rate",
+        "declination_sum_rate",
+    ),
+    _pair_rows,
+)
 
 
 @dataclass(frozen=True)
@@ -175,6 +277,21 @@ def run_charts_jsonl(request: HttpRequest, pk: int) -> StreamingHttpResponse:
 
 
 @login_required
+def run_chart_values_csv(request: HttpRequest, pk: int) -> HttpResponseBase:
+    return _table(pk, CHART_VALUES)
+
+
+@login_required
+def run_points_csv(request: HttpRequest, pk: int) -> HttpResponseBase:
+    return _table(pk, POINTS)
+
+
+@login_required
+def run_pairs_csv(request: HttpRequest, pk: int) -> HttpResponseBase:
+    return _table(pk, PAIRS)
+
+
+@login_required
 def stored_chart(request: HttpRequest, key: str) -> HttpResponse:
     stored = get_object_or_404(StoredChart, pk=key)
     context: dict[str, object] = {"stored": stored, "running_version": ENGINE_VERSION}
@@ -253,9 +370,68 @@ def _outcomes(chosen: CalculationRun, show: str) -> QuerySet[RunOutcome]:
     return outcomes
 
 
-def _documents(keys: list[str]) -> Iterator[str]:
+def _stored(keys: list[str]) -> Iterator[tuple[str, str]]:
+    """Each stored chart's key and document, in the keys' order, read a batch at a time."""
     for start in range(0, len(keys), DOCUMENTS_AT_A_TIME):
         chunk = keys[start : start + DOCUMENTS_AT_A_TIME]
         documents = dict(StoredChart.objects.filter(pk__in=chunk).values_list("pk", "document"))
         for key in chunk:
-            yield f"{documents[key]}\n"
+            yield key, documents[key]
+
+
+def _documents(keys: list[str]) -> Iterator[str]:
+    for _, document in _stored(keys):
+        yield f"{document}\n"
+
+
+def _table(pk: int, table: Table) -> HttpResponseBase:
+    chosen = get_object_or_404(CalculationRun, pk=pk)
+    charted = list(
+        chosen.outcomes.exclude(chart=None)
+        .order_by("record__pk")
+        .values_list("record_id", "record__subject__label", "chart_id")
+    )
+    unreadable = _unreadable(list(dict.fromkeys(key for _, _, key in charted)))
+    if unreadable is not None:
+        key, error = unreadable
+        return HttpResponse(
+            f"stored chart {key} can't be read by this engine: {type(error).__name__}: {error}\n",
+            status=422,
+            content_type="text/plain; charset=utf-8",
+        )
+    response = StreamingHttpResponse(
+        _table_lines(table, charted), content_type="text/csv; charset=utf-8"
+    )
+    response["Content-Disposition"] = f'attachment; filename="run-{chosen.pk}-{table.name}.csv"'
+    return response
+
+
+def _unreadable(keys: list[str]) -> tuple[str, InvalidChartDocument] | None:
+    """The first of these stored charts this engine can't read, and why."""
+    for key, document in _stored(keys):
+        try:
+            chart_from_json(document)
+        except InvalidChartDocument as error:
+            return key, error
+    return None
+
+
+def _table_lines(table: Table, charted: list[tuple[int, str, str]]) -> Iterator[str]:
+    """The header, then each batch of records' rows; a shared chart is read once a batch."""
+    yield _csv_text([[*LEAD_COLUMNS, *table.columns]])
+    for start in range(0, len(charted), DOCUMENTS_AT_A_TIME):
+        chunk = charted[start : start + DOCUMENTS_AT_A_TIME]
+        keys = {key for _, _, key in chunk}
+        documents = StoredChart.objects.filter(pk__in=keys).values_list("pk", "document")
+        charts = {key: chart_from_json(document) for key, document in documents}
+        yield _csv_text(
+            [record_id, subject, key, *row]
+            for record_id, subject, key in chunk
+            for row in table.rows(charts[key])
+        )
+
+
+def _csv_text(rows: Iterable[list[object]]) -> str:
+    buffer = io.StringIO()
+    csv.writer(buffer).writerows(rows)  # RFC 4180: \r\n line endings, quoted only where needed
+    return buffer.getvalue()

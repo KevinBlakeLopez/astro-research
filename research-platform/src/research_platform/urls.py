@@ -68,5 +68,12 @@ urlpatterns = [
     path("runs/<int:pk>/", runs_views.run, name="run"),
     path("runs/<int:pk>/outcomes.csv", runs_views.run_outcomes_csv, name="run-outcomes-csv"),
     path("runs/<int:pk>/charts.jsonl", runs_views.run_charts_jsonl, name="run-charts-jsonl"),
+    path(
+        "runs/<int:pk>/chart-values.csv",
+        runs_views.run_chart_values_csv,
+        name="run-chart-values-csv",
+    ),
+    path("runs/<int:pk>/points.csv", runs_views.run_points_csv, name="run-points-csv"),
+    path("runs/<int:pk>/pairs.csv", runs_views.run_pairs_csv, name="run-pairs-csv"),
     path("charts/<str:key>/", runs_views.stored_chart, name="stored-chart"),
 ]

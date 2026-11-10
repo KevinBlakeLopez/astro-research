@@ -30,6 +30,7 @@
 
 <h2>Outcomes</h2>
 <p>Download <a href="{% url 'run-outcomes-csv' run.pk %}">the outcomes (CSV)</a> or <a href="{% url 'run-charts-jsonl' run.pk %}">the charts (JSON Lines)</a>: each stored chart once, exactly as stored, every value at full precision.</p>
+<p>Tidy tables (CSV), a row per record with a chart, every value at full precision: <a href="{% url 'run-chart-values-csv' run.pk %}">chart values</a> · <a href="{% url 'run-points-csv' run.pk %}">points</a> (a row per point) · <a href="{% url 'run-pairs-csv' run.pk %}">pairs</a> (a row per pair). They have no deviations: each is the separation minus the aspect angle, and changes at the separation's rate.</p>
 <p>Show: {% for name, label in shows.items %}{% if name == show %}<strong>{{ label }}</strong>{% else %}<a href="{% url 'run' run.pk %}{% if name %}?show={{ name }}{% endif %}">{{ label }}</a>{% endif %}{% if not forloop.last %} · {% endif %}{% endfor %}</p>
 {% if error %}
 {% include "research_platform/request_error.html" %}

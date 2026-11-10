@@ -196,6 +196,61 @@ cd research-platform && uv run python manage.py import_csv subjects.csv --source
 
 **Its output:** for example `imported 120 records: 120 new subjects, 240 values`.
 
+## A demo dataset: Gauquelin's sports champions
+
+The [Open Gauquelin Database](https://opengauquelin.org/) publishes the Gauquelins' groups of births as CSV files. Group A1 is the 2,088 sports champions of their LERRCP booklet, born 1817–1949 in France, Italy, Belgium, the Netherlands, Algeria, Germany and Monaco. `scripts/convert_open_gauquelin.py` turns such a file into two files the CSV import takes: the champions, and a shuffled control for each. A hypothesis can then compare the champions with the controls.
+
+**The data's license.** The site says its data are under a Creative Commons license, and its About page lists CC BY-SA 4.0 with the GPL and the FDL, without saying which covers the data. Neither the downloaded file nor the converted files are kept in this repository.
+
+**Its times.** Each row has `DATE`, the birth certificate's reading to the minute, and `DATE-UT`, the source's universal time. `TZO`, the stated offset, is given for only 1,030 of A1's rows, nearly all French. Where it's given, `DATE` minus `TZO` compares with `DATE-UT` like this (observed):
+- **The same** in 649 rows.
+- **Under a minute apart** in 349. For example, 129 rows on Paris mean time state `+00:09:21`, but their universal time implies `+00:09`.
+- **A minute to an hour apart** in 19.
+- **An hour or more apart** in 12.
+
+Across all the rows, `DATE` and `DATE-UT` are more than 3 hours apart in 18, and 12 of those are a day or more apart. So the conversion follows `DATE-UT`, the one value nearly every row has:
+- **Each champion** is `DATE`, with the offset `DATE` minus `DATE-UT` to the second (`time_kind` `offset`, `time_resolution` `minute`). The import then resolves it to exactly the source's universal time, and no time-zone database is involved. A `DATE` of 24:00 is midnight starting the next day.
+- **A row is left out,** with the first reason found, for:
+  - no birth time;
+  - no universal time;
+  - no coordinates;
+  - a value that can't be read;
+  - an offset of more than 3 hours either way (every A1 birthplace is between 4.5°W and 18.3°E);
+  - a `TZO` a minute or more from the offset. The reading is only to the minute, so smaller differences are within what it can say.
+- **The subject** is the row's `GQID`, such as `A1-1`. The names stay in the source's file.
+
+**The controls.** A control keeps a champion's date, offset and place, and takes another champion's clock time. This breaks the link between a birth and its time of day without working out any offset anew. The champions are put in order by the SHA-256 of `<seed>:<GQID>`, and each takes its clock time from the next one in that order (the last from the first). So no control has its own champion's time, and every clock time is used once. No random-number generator is involved, so a seed gives the same controls on any Python version. Controls are numbered `control-0001` and up, in their champions' order.
+
+**Converting and importing.** Download `A1.csv.zip` from the site's [historical datasets](https://opengauquelin.org/history) and unzip it. Then:
+
+```bash
+cd research-platform && uv run python scripts/convert_open_gauquelin.py ~/Downloads/A1.csv --seed 1 --out ~/Downloads/a1-converted
+```
+
+It writes three files:
+- `champions.csv`;
+- `controls.csv`;
+- `left-out.csv`, which lists every row left out, by `GQID`, with its reason.
+
+It won't overwrite any of them. Before importing:
+- **Define a category variable** `group`, with the categories `champion` and `control`, in the admin.
+- **Add two sources:**
+  - one for the champions: the database's group A1 and the file's date;
+  - one for the controls: this script, its commit and the seed.
+- **Add a dataset.**
+
+Then run `import_csv` on each file, with its own source and `--dataset`. The dataset is computed and tested like any other (see [Runs](#runs) and [The research layer](#the-research-layer)).
+
+**On A1's file of 2024-01-11 (observed):**
+- **Kept:** 2,045 champions, and so 2,045 controls.
+- **Left out:** 43 rows:
+  - no birth time, 2;
+  - no universal time, 1;
+  - more than 3 hours, 18;
+  - `TZO` disagreeing, 22.
+- **The import's check:** both files pass `import_csv --check` with nothing refused.
+- **Universal time:** every champion's record resolves to exactly the source's `DATE-UT`.
+
 ## The web interface
 
 It runs on this machine only: it answers on 127.0.0.1 and localhost, and every page needs a login.

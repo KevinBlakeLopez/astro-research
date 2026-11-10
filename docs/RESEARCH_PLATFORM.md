@@ -1,6 +1,6 @@
 # Research platform
 
-`research-platform/` stores subjects, sources, birth records and datasets in PostgreSQL, and runs the engine over datasets. It's a Django project and a separate distribution, `research-platform`, which depends on the engine. The engine doesn't depend on it: no `astro_research` module imports Django, psycopg or the platform, and the engine's distribution depends on neither (`tests/test_boundary.py`).
+`research-platform/` stores subjects, sources, birth records and datasets in SQLite (or PostgreSQL), and runs the engine over datasets. It also runs as a desktop app (see below). It's a Django project and a separate distribution, `research-platform`, which depends on the engine. The engine doesn't depend on it: no `astro_research` module imports Django, psycopg or the platform, and the engine's distribution depends on neither (`tests/test_boundary.py`).
 
 Django owns the schema (`research_platform/models.py` and its migrations). The web interface, described below, is the admin for entering data; a chart page, a birth-time sensitivity page, a nearest-eclipses page and a parans page for each record; and a comparison of any two records.
 
@@ -19,15 +19,17 @@ Django owns the schema (`research_platform/models.py` and its migrations). The w
 | `Category` | One of a category variable's values, unique within it, in the order added. |
 | `Observation` | One subject's value of one variable, from a cited source, with notes. At most one per subject and variable, and exactly one of a category, a number and yes/no (database constraints). |
 | `Feature` | A derived configuration: a unique name, a kind from `features.py`, the kind's settings (checked by the kind, kept in a standard form), a description. |
+| `Hypothesis` | A question for a run: a feature, a variable and its group, a finished run, an analysis from `analyses.py` and its settings, and a statement. Locked once it has a result. |
+| `AnalysisRun` | One result of a hypothesis: its inputs, the records left out and why, the analysis's result, the analysis code's SHA-256 and the engine version. Never changed or deleted. |
 | `ImportedChart` | The AstroChart Bridge file a record was imported from, exactly as it was, once (its SHA-256 is unique), with where AstroChart Bridge read the chart and how it decided the offset in columns of their own. |
 
 ## The research layer
 
-It's being built in this order: what's known about subjects (variables) and derived configurations (features), both below, then hypotheses and analysis runs.
+It's built in this order: what's known about subjects (variables), derived configurations (features), and hypotheses with their results, all below. The hypotheses' own pages come next.
 
 **Researchers fill in forms; they don't write code.** Most astrologers aren't developers, and on a hosted site, running researchers' own code would let them run anything on the server. So features and analyses each come from a registry written as code by the platform's maintainers. A researcher chooses a kind and fills in its settings.
 
-**Analyses will be Python functions in that registry,** not one fixed test. A hypothesis will name an analysis and its settings. The platform will run it on the calculation run the hypothesis names, and record every result, null ones included, with the hypothesis, the analysis code's hash, the seed and the run's provenance. A hypothesis will be locked once it has a result.
+**Analyses are Python functions in that registry** (`research_platform/analyses.py`), not one fixed test. A hypothesis names an analysis and its settings. The platform runs it on the calculation run the hypothesis names, and records every result, null ones included, with the inputs it used, the analysis code's SHA-256 and the engine version. A hypothesis is locked once it has a result.
 
 This keeps methods out of the engine, as the Phase 1 report asks for research rules. And because every result is recorded whatever it shows, it guards against keeping only the tests that worked. The other options were statistics in researchers' own scripts with results recorded by hand, which records only what they record, or a single built-in test, which chooses the method for them.
 
@@ -49,7 +51,33 @@ This keeps methods out of the engine, as the Phase 1 report asks for research ru
 - **Sign (a category):** a point's tropical zodiac sign, its longitude in 30° steps from 0° Aries.
 - **Points** are a chart's 17: the bodies, the lunar points, the Ascendant, MC and Vertex.
 - **Values come from a run's stored charts when asked for,** a batch at a time, and only the values are kept, never stored. Refused records have none.
-- **Not yet:** numeric kinds (such as the closest deviation), declination beyond a limit, parans, and locking a feature once a hypothesis uses it.
+- **Not yet:** numeric kinds (such as the closest deviation), declination beyond a limit, and parans.
+
+**Hypotheses** put a question to a calculation run. A hypothesis names:
+- a feature;
+- the outcome: a variable and its group, one of its categories, or yes for a yes/no variable;
+- a finished run, so the data is fixed before any result exists;
+- an analysis and its settings;
+- a statement in words.
+
+The first analysis is **Fisher's exact test** (`fisher-exact`), on the 2×2 table of group × feature: is a yes/no feature more (or less) common in the group than among the rest?
+- **Its settings have no defaults:** the direction (`greater`, `less` or `two-sided`) and the significance level, between 0 and 1.
+- **The p-value is exact,** a fraction worked out with `math.comb`, so it's the same every time and needs no random seed.
+  - **Two-sided** is the probability of every table no more likely than the observed one, compared exactly. R's `fisher.test` allows a relative tolerance of 1e-7 there instead, so the two could differ in rare near-ties.
+  - **Checked against:** Fisher's tea-tasting table (17/70 one-sided, 17/35 two-sided), the dieting example's 0.002759 (as R gives), and a count of every possible draw for over 300 small tables.
+- **At or below the level** means p ≤ alpha, with alpha read as written: 0.3 is exactly 3/10, not the binary float just under it.
+- **A result stores** the table, the exact p-value and whether it's at or below the level. The frequencies and the odds ratio are worked out from the table.
+
+**Running one** (`run_hypothesis`, below) collects one row per subject: the record, the feature's value on its stored chart, and whether it's in the group.
+- **Left out and listed by record:** refused records, and subjects with no value of the variable.
+- **Refused, with nothing recorded:** a subject with two records in the run, since counting it twice would weigh it double, and which record stands for it is the dataset's decision. A stored document this engine can't read is refused too, and so is a hypothesis that's no longer valid, for example because its feature became a sign since it was saved.
+- **Every result is kept** (`AnalysisRun`) with the inputs it used, so editing a value afterwards leaves the result as it was, and the next run shows the change.
+
+**Locks:** once a hypothesis has a result, none of its fields can change, its feature's kind and settings can't change, and it can't be deleted. A feature used by any hypothesis can't be deleted. A hypothesis without results can be changed or deleted.
+
+**The platform records, but doesn't blind you to the data.** A feature's page shows its values for a run. For a confirmatory test, register the hypothesis on a run of data you haven't looked at.
+
+- **Not yet:** the hypotheses' pages (entering them in the admin for now), corrections for running several tests (Bonferroni, Holm), and further analyses: a permutation test, and a comparison with expected frequencies from a control, as Gauquelin made with shuffled birth times and dates.
 
 **Records, field by field.** A record's `reading` is ISO 8601 text. It's aware (`+00:00`) for UTC and the naive wall-clock reading otherwise, since a Django `DateTimeField` can't hold a naive reading while times are kept zone-aware. The other fields are `zone`, `utc_offset_us` (the offset of an offset time, or the stated offset of a zoned one), `accept_pre_1970_tzdb`, `latitude`, `longitude`, `elevation_m`, `time_resolution` and `stated_uncertainty_us`.
 
@@ -100,6 +128,14 @@ cd research-platform && uv run python manage.py compute_dataset NAME --aspects m
 ```
 
 The command prints a summary such as `run 3: 180 charts (12 computed, 168 reused), 2 refused`. `--time-scale` takes the same values as the scripts and defaults to `ut1-from-iers`. With PostgreSQL chosen, set `RESEARCH_DB_HOST`, `RESEARCH_DB_PORT`, `RESEARCH_DB_NAME`, `RESEARCH_DB_USER` and `RESEARCH_DB_PASSWORD` to use another server. `RESEARCH_EPHE_DIR` chooses another ephemeris folder. The SQLite database and the PostgreSQL one are separate: an account or data made in one isn't in the other.
+
+**Running a hypothesis:**
+
+```bash
+cd research-platform && uv run python manage.py run_hypothesis "NAME"
+```
+
+It prints the result, such as `result 3 of 'Mars on an angle in athletes': p = 0.2429 (17/70), above 0.05`, or why it can't run.
 
 ## Importing charts from AstroChart Bridge
 
@@ -295,6 +331,18 @@ cd research-platform && RESEARCH_DEBUG=1 uv run python manage.py runserver 127.0
 54. Follow the run from step 31. Expect each of the dataset's two charted records with yes or no, the counts below "Run …", and "1 refused, with no value".
 55. Add another contact feature with `mars` ticked among its own other points. Expect "a point can't be in contact with itself" above the form, with what you entered still there.
 56. Add a **sign** feature for `sun`, and show it for step 31's run. Expect all 12 signs in the counts, with the records' signs counted.
+57. In the admin, add a hypothesis named `Mars on an angle in athletes`:
+    - **feature:** step 53's;
+    - **variable and category:** `profession` and `profession: athlete`;
+    - **run:** step 31's;
+    - **analysis:** `fisher-exact`;
+    - **settings:** `{"alternative": "greater", "alpha": 0.05}`;
+    - **statement:** any.
+
+    Save it, and expect it saved. Then change the category to empty and save. Expect "name which of profession's categories is the group".
+58. Run `run_hypothesis "Mars on an angle in athletes"`. Expect "subject '…' has 2 records in run …", since steps 1 and 7 are one subject's records, and no result under **Analysis runs** in the admin.
+59. Add a dataset `one-each` with the records of steps 1 and 9, run it from its page with `major`, set the hypothesis's run to that one in the admin, and run the command again. Expect "result 1 of 'Mars on an angle in athletes': p = 1 (1), above 0.05". Only step 1's subject has a profession, so the table has one subject.
+60. In the admin, change the hypothesis's statement and save. Expect "Mars on an angle in athletes has results, so it can't change".
 
 ## The desktop app
 

@@ -23,8 +23,12 @@ Whether a variable is an outcome or something to control for is a hypothesis's t
 
 A `Feature` (a derived configuration) is something you define from a chart: a kind from the
 registry in `features.py` and the kind's settings, such as "Mars within 10 degrees of an angle".
-Its value comes from a stored chart when needed and is never stored. Hypotheses and analysis
-runs are the rest of the research layer, still to come.
+Its value comes from a stored chart when needed and is never stored.
+
+A `Hypothesis` names a feature, an outcome (a variable and the group: one of its categories,
+or yes), a finished calculation run, and an analysis from the registry in `analyses.py` with
+its settings. Each `AnalysisRun` is one result, with the inputs it used, and every one is kept.
+A hypothesis is locked once it has a result, and so is its feature.
 """
 
 import dataclasses
@@ -49,7 +53,7 @@ from astro_research.ephemeris import EphemerisProvenance
 from astro_research.geo import GeoPosition
 from astro_research.positions import Body, LunarPoint, Point
 from astro_research.result_format import chart_from_json
-from research_platform import features
+from research_platform import analyses, features
 
 _POINTS: dict[str, Point] = {member.value: member for member in (*Body, *LunarPoint)}
 
@@ -473,6 +477,13 @@ class Feature(models.Model):
 
     def clean(self) -> None:
         self.settings = features.kind(self.kind).check(self.settings)
+        if self.pk is None or not AnalysisRun.objects.filter(hypothesis__feature=self).exists():
+            return
+        stored = Feature.objects.get(pk=self.pk)
+        if (stored.kind, stored.settings) != (self.kind, self.settings):
+            raise ValidationError(
+                f"{self.name} is used by a hypothesis with results, so it can't change"
+            )
 
     def describe(self) -> str:
         return features.KINDS[self.kind].describe(self.settings)
@@ -482,6 +493,98 @@ class Feature(models.Model):
 
     def __str__(self) -> str:
         return self.name
+
+
+class Hypothesis(models.Model):
+    """A question put to a calculation run: is a feature's value tied to a group of subjects?"""
+
+    LOCKED = ("name", "statement", "feature", "variable", "category", "run", "analysis", "settings")
+
+    name = models.CharField(max_length=200, unique=True)
+    statement = models.TextField(help_text="The hypothesis in words, as it was registered.")
+    feature = models.ForeignKey(Feature, on_delete=models.PROTECT, related_name="hypotheses")
+    variable = models.ForeignKey(Variable, on_delete=models.PROTECT, related_name="hypotheses")
+    category = models.ForeignKey(
+        Category,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="hypotheses",
+        help_text="The group, for a category variable (a yes/no one's is yes).",
+    )
+    run = models.ForeignKey(CalculationRun, on_delete=models.PROTECT, related_name="hypotheses")
+    analysis = models.CharField(max_length=50)
+    settings = models.JSONField(
+        default=dict, help_text="The analysis's settings, as it checks them."
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name_plural = "hypotheses"
+
+    def clean(self) -> None:
+        chosen = analyses.analysis(self.analysis)
+        self.settings = chosen.check(self.settings)
+        if self.feature_id is not None:
+            value_kind = features.kind(self.feature.kind).value_kind
+            if value_kind not in chosen.feature_values:
+                raise ValidationError(
+                    f"{chosen.name} needs a yes/no feature; {self.feature.name} is a "
+                    f"{self.feature.kind} feature"
+                )
+        if self.variable_id is not None:
+            self._check_group(chosen)
+        if self.run_id is not None and self.run.status != CalculationRun.Status.FINISHED:
+            raise ValidationError(f"run {self.run.pk} is {self.run.status}, not finished")
+        if self.pk is not None and self.results.exists():
+            stored = Hypothesis.objects.get(pk=self.pk)
+            if any(_field(stored, name) != _field(self, name) for name in self.LOCKED):
+                raise ValidationError(f"{self.name} has results, so it can't change")
+
+    def _check_group(self, chosen: analyses.Analysis) -> None:
+        variable = self.variable
+        kind = Variable.Kind(variable.kind)
+        if kind not in chosen.variable_kinds:
+            raise ValidationError(
+                f"{chosen.name} needs a category or yes/no variable; {variable.name} is a "
+                f"{kind.label} variable"
+            )
+        if kind == Variable.Kind.CATEGORY:
+            if self.category is None:
+                raise ValidationError(f"name which of {variable.name}'s categories is the group")
+            if self.category.variable_id != variable.pk:
+                raise ValidationError(
+                    f"{self.category.name!r} is not one of {variable.name}'s categories"
+                )
+        elif self.category is not None:
+            raise ValidationError(
+                f"{variable.name} is a yes/no variable, so its group is the subjects with yes; "
+                "name no category"
+            )
+
+    def __str__(self) -> str:
+        return self.name
+
+
+def _field(hypothesis: Hypothesis, name: str) -> object:
+    """A field's value, by id for a relation, so an unsaved change compares with the stored."""
+    return hypothesis.serializable_value(name)
+
+
+class AnalysisRun(models.Model):
+    """One result of a hypothesis: its inputs, what was left out and why, the analysis's
+    result, and the code and engine that produced it. Never changed or deleted."""
+
+    hypothesis = models.ForeignKey(Hypothesis, on_delete=models.PROTECT, related_name="results")
+    ran_at = models.DateTimeField(auto_now_add=True)
+    inputs = models.JSONField(help_text="Each subject's record, feature value and group.")
+    excluded = models.JSONField(help_text="The records left out, by reason.")
+    result = models.JSONField()
+    analysis_sha256 = models.CharField(max_length=64, help_text="analyses.py's SHA-256.")
+    engine_version = models.CharField(max_length=50)
+
+    def __str__(self) -> str:
+        return f"result {self.pk} of {self.hypothesis}"
 
 
 def _microseconds(duration: timedelta | None) -> int | None:

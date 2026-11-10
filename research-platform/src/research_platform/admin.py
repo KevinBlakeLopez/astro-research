@@ -4,7 +4,8 @@ Runs, outcomes and stored charts are what the engine produced, so they can be lo
 added, changed or deleted here. A record is validated by the engine when it's saved (`Record.
 clean()`), and its page links to its chart. Two records chosen in the list open their
 comparison. A dataset's page links to its runs, where a run can be started. Variables and
-their values are entered here too: on a variable's page, or a subject's.
+their values are entered here too: on a variable's page, or a subject's. Records imported
+from AstroChart Bridge (`import_charts`) keep their files, which can be read but not changed.
 """
 
 from typing import Any
@@ -20,6 +21,7 @@ from research_platform.models import (
     CalculationRun,
     Category,
     Dataset,
+    ImportedChart,
     Observation,
     Record,
     RunOutcome,
@@ -87,8 +89,25 @@ class RecordAdmin(admin.ModelAdmin[Record]):
     list_display = ("subject", "reading", "time_kind", "zone", "source")
     list_filter = ("time_kind", "time_resolution")
     search_fields = ("subject__label", "reading", "zone")
-    readonly_fields = ("chart", "sensitivity", "eclipses", "parans")
+    readonly_fields = ("imported_from", "chart", "sensitivity", "eclipses", "parans")
     actions = ("compare_records",)
+
+    @admin.display(description="Imported from")
+    def imported_from(self, record: Record) -> SafeString | str:
+        imported = ImportedChart.objects.filter(record_id=record.pk).first() if record.pk else None
+        if imported is None:
+            return "Entered here."
+        url = reverse("admin:research_platform_importedchart_change", args=[imported.pk])
+        return format_html(
+            '<a href="{}">{}</a>, from AstroChart Bridge: site {}, read from {}, UTC from {},'
+            " imported {}",
+            url,
+            imported.file_name,
+            imported.site or "not given",
+            imported.via or "not given",
+            imported.utc_basis or "not given",
+            f"{imported.imported_at:%Y-%m-%d}",
+        )
 
     @admin.display(description="Chart")
     def chart(self, record: Record) -> SafeString | str:
@@ -167,6 +186,15 @@ class CalculationRunAdmin(ProducedByTheEngine[CalculationRun]):
 class RunOutcomeAdmin(ProducedByTheEngine[RunOutcome]):
     list_display = ("run", "record", "chart", "refusal_class")
     list_filter = ("refusal_class",)
+
+
+@admin.register(ImportedChart)
+class ImportedChartAdmin(ProducedByTheEngine[ImportedChart]):
+    """The files records were imported from, as they were (`import_charts`)."""
+
+    list_display = ("file_name", "record", "site", "via", "utc_basis", "imported_at")
+    list_filter = ("via", "site", "utc_basis")
+    search_fields = ("file_name", "record__subject__label")
 
 
 @admin.register(StoredChart)

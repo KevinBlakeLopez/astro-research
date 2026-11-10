@@ -1,0 +1,21 @@
+{
+  "format": "astrochart",
+  "version": 1,
+  "chart": {
+    "calendar": "gregorian",
+    "local": "2000-01-01T00:30:00",
+    "utcOffsetSeconds": 39600,
+    "latitude": -33.8688,
+    "longitude": 151.2093
+  },
+  "source": {
+    "site": "astro-seek",
+    "via": "screenshot",
+    "zoneLabel": "AEDT",
+    "utcBasis": "zone-label"
+  },
+  "labels": {
+    "name": "Synthetic Person Three",
+    "town": "Sydney, AU"
+  }
+}

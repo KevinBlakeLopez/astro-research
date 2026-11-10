@@ -1,0 +1,18 @@
+{
+  "format": "astrochart",
+  "version": 1,
+  "chart": {
+    "calendar": "gregorian",
+    "local": "1975-07-04T16:45:00",
+    "utcOffsetSeconds": -14400,
+    "latitude": 40.7128,
+    "longitude": -74.006
+  },
+  "source": {
+    "via": "paste",
+    "utcBasis": "entered"
+  },
+  "labels": {
+    "name": "Synthetic Person Four"
+  }
+}

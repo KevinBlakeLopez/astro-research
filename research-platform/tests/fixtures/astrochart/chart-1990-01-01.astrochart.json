@@ -1,0 +1,20 @@
+{
+  "format": "astrochart",
+  "version": 1,
+  "chart": {
+    "calendar": "gregorian",
+    "local": "1990-01-01T12:00:00",
+    "utcOffsetSeconds": 19800,
+    "latitude": 28.6139,
+    "longitude": 77.209
+  },
+  "source": {
+    "site": "astro-com",
+    "via": "page",
+    "zoneLabel": "5h30e",
+    "utcBasis": "zone-label"
+  },
+  "labels": {
+    "name": "Synthetic Person Two"
+  }
+}

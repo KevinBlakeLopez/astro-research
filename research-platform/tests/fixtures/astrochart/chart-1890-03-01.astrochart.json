@@ -1,0 +1,17 @@
+{
+  "format": "astrochart",
+  "version": 1,
+  "chart": {
+    "calendar": "gregorian",
+    "local": "1890-03-01T10:00:00",
+    "utcOffsetSeconds": 561,
+    "latitude": 48.8566,
+    "longitude": 2.3522
+  },
+  "source": {
+    "site": "astro-com",
+    "via": "page",
+    "zoneLabel": "LMT",
+    "utcBasis": "printed"
+  }
+}

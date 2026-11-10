@@ -10,7 +10,8 @@ These are kept apart, as the brief asks:
 - a `CalculationRun` computes a dataset's charts under one set of settings, and has one
   `RunOutcome` per record: its chart, or the engine's refusal of it;
 - a `StoredChart` is one chart's chart-result-v1 text, kept once under its calculation key and
-  shared by every run that produced it.
+  shared by every run that produced it;
+- an `ImportedChart` is the AstroChart Bridge file a record was imported from, exactly as it was.
 
 What's known about each subject is in variables:
 
@@ -200,6 +201,27 @@ class Record(models.Model):
 
     def __str__(self) -> str:
         return f"{self.subject}: {self.reading} ({self.source})"
+
+
+class ImportedChart(models.Model):
+    """The AstroChart Bridge file (`.astrochart.json`) a record was imported from, kept exactly
+    as it was, once: its SHA-256 is unique. Where AstroChart Bridge read the chart and how it
+    decided the offset are copied into columns, to filter by; the text is the record of it."""
+
+    record = models.OneToOneField(Record, on_delete=models.CASCADE, related_name="imported_chart")
+    file_name = models.CharField(max_length=255)
+    text = models.TextField()
+    sha256 = models.CharField(max_length=64, unique=True)
+    imported_at = models.DateTimeField(auto_now_add=True)
+    site = models.CharField(max_length=32, blank=True, help_text="e.g. astro-seek, astro-com")
+    via = models.CharField(max_length=32, blank=True, help_text="page, screenshot or paste")
+    zone_label = models.CharField(max_length=64, blank=True)
+    utc_basis = models.CharField(
+        max_length=32, blank=True, help_text="printed, declared, zone-label or entered"
+    )
+
+    def __str__(self) -> str:
+        return self.file_name
 
 
 class Dataset(models.Model):

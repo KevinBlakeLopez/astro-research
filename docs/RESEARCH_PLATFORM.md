@@ -18,6 +18,7 @@ Django owns the schema (`research_platform/models.py` and its migrations). The w
 | `Variable` | Something recorded about subjects: a unique name, a kind (category, number or yes/no), a unit for a number, a description. |
 | `Category` | One of a category variable's values, unique within it, in the order added. |
 | `Observation` | One subject's value of one variable, from a cited source, with notes. At most one per subject and variable, and exactly one of a category, a number and yes/no (database constraints). |
+| `ImportedChart` | The AstroChart Bridge file a record was imported from, exactly as it was, once (its SHA-256 is unique), with where AstroChart Bridge read the chart and how it decided the offset in columns of their own. |
 
 ## The research layer
 
@@ -82,6 +83,32 @@ cd research-platform && uv run python manage.py compute_dataset NAME --aspects m
 ```
 
 The command prints a summary such as `run 3: 180 charts (12 computed, 168 reused), 2 refused`. `--time-scale` takes the same values as the scripts and defaults to `ut1-from-iers`. Set `RESEARCH_DB_HOST`, `RESEARCH_DB_PORT`, `RESEARCH_DB_NAME`, `RESEARCH_DB_USER` and `RESEARCH_DB_PASSWORD` to use another database, and `RESEARCH_EPHE_DIR` for another ephemeris folder.
+
+## Importing charts from AstroChart Bridge
+
+[AstroChart Bridge](https://github.com/KevinBlakeLopez/astrochart-bridge), a browser extension, reads a chart from an Astro-Seek or astro.com page, a screenshot, pasted text, an AAF file or a Morinus file, and refuses one rather than guess its time. Its **Share…** button saves the chart as a `.astrochart.json` file. `import_charts` imports such files as records:
+
+```bash
+cd research-platform && uv run python manage.py import_charts ~/Downloads/chart-*.astrochart.json --source 3 --check
+```
+
+- **An offset-time record.** A chart is the wall-clock reading and the offset its source stated, which is the engine's `OffsetLocalTime`: no time zone is involved, so tzdb's pre-1970 limits don't apply. The offset is the one astro.com or Astro-Seek printed, which makes these records a second source for the pre-1970 time-zone review.
+- **What the format doesn't say:**
+  - time resolution, left blank unless `--resolution hour`, `minute` or `second` states it for the batch;
+  - elevation, which is the platform's default (0 m);
+  - a Rodden rating, which belongs with your source.
+- **The source** (`--source`, a source's id) is yours to cite. AstroChart Bridge's `site` says only where it read the chart: `astro-com` isn't the source behind astro.com's page.
+- **The subject** is the file's name, which a file has only when its sender ticked it, or `--subject` for every file of the batch. A file with neither is refused. So is a name that's already a subject, or that another file of the batch also gives, unless `--add-to-existing` says they're the same person: two people with one name are never merged unasked.
+- **Each file is kept** exactly as imported, with its SHA-256, so the same file can't be imported twice. Its `site`, `via` (`page`, `screenshot` or `paste`) and `utcBasis` are columns an analysis can filter on: a screenshot was read by OCR and nothing checked its latitude, and a pasted chart's offset wasn't checked against its birthplace. A record's admin page says where it was imported from, and the files can be read there but not changed.
+- **All or nothing.** If any file is refused, nothing is imported, and every refused file is listed with its reason. The format's reasons are AstroChart Bridge's own (`malformed`, `too-large`, `not-astrochart`, `unsupported-version`, `unknown-field`, `unsupported-calendar`, `invalid-date`, `before-gregorian`, `invalid-offset`, `invalid-coordinates`, `invalid-source`, `invalid-labels`). The platform adds `not-utf-8`, `duplicate`, `no-name`, `existing-subject`, `shared-name`, and `invalid-record` with the engine's reason. `--check` checks without importing, and `--dataset NAME` adds the records to a dataset.
+
+**The format is AstroChart Bridge's,** described in its `docs/portable-charts.md`, and its reader, `parse()` in `extension/core/portable.js`, is the reference. `research_platform/astrochart.py` refuses what it refuses, with the same reason. It's checked against inputs AstroChart Bridge's reader was run on (`tests/fixtures/astrochart/`, made by `make.mjs` with its module). Those inputs cover where Python and JavaScript read the same text differently:
+- JavaScript's numbers are all doubles, so `1.0` is version 1 and `true` is never a number, and `NaN` isn't JSON;
+- its lengths are UTF-16 code units, so an emoji counts two towards the 16,384-character limit;
+- Python's `\d` matches other scripts' digits and its `$` matches before a final newline;
+- JavaScript's `Date.UTC` reads years 0 to 99 as 1900 to 1999.
+
+A later version of the format is refused (`unsupported-version`) until the reader learns it.
 
 ## The web interface
 
@@ -237,6 +264,12 @@ cd research-platform && RESEARCH_DEBUG=1 uv run python manage.py runserver 127.0
 43. Open step 1's subject in the admin. Expect `profession` and `profession: athlete` among its values.
 44. Open the `sample` dataset's page. Expect "What's known about its subjects" with `profession` at "1 of 2" and "athlete 1 · musician 0".
 45. On the variable's admin page, tick **Delete** on the `athlete` category and save. Expect the admin to refuse, naming step 1's subject's value, and `athlete` still there.
+46. In AstroChart Bridge, open a chart, choose **Share…**, tick its name, and download the file. Note the UTC it shows.
+47. Add a source for it in the admin, then run `import_charts` on the file with `--source` and the source's id and `--check`. Expect "1 chart can be imported; nothing was saved", and nothing new in the admin.
+48. Run it again without `--check`. Expect "imported 1 chart: 1 new subject".
+49. Open the new record in the admin. Expect **Imported from** with the file's name, its site, how it was read and how its UTC was decided. Follow the file's name: expect the file's text and no **Save** button.
+50. Follow **Chart** on the record. Expect the UTC that AstroChart Bridge showed in step 46.
+51. Run step 48's command again. Expect "nothing was imported", with the file listed as `duplicate`.
 
 ## Tests
 

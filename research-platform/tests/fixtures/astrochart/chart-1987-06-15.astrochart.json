@@ -1,0 +1,21 @@
+{
+  "format": "astrochart",
+  "version": 1,
+  "chart": {
+    "calendar": "gregorian",
+    "local": "1987-06-15T04:25:00",
+    "utcOffsetSeconds": 3600,
+    "latitude": 51.5074,
+    "longitude": -0.1278
+  },
+  "source": {
+    "site": "astro-seek",
+    "via": "page",
+    "zoneLabel": "BST",
+    "utcBasis": "printed"
+  },
+  "labels": {
+    "name": "Synthetic Person One",
+    "town": "London, UK"
+  }
+}

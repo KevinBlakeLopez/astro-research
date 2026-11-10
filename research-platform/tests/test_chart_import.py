@@ -227,6 +227,20 @@ def test_the_subject_option_names_every_file_s_subject(source: Source) -> None:
 
 
 @pytest.mark.django_db
+def test_a_subject_option_too_long_for_its_label_is_refused(source: Source) -> None:
+    # A file's own name fits (the format allows 100 UTF-16 code units); the option is checked,
+    # since SQLite wouldn't enforce the label's 200 characters and PostgreSQL would refuse them
+    # only while saving.
+    with pytest.raises(
+        CommandError, match="--subject: Ensure this value has at most 200 characters"
+    ):
+        run(BST, source=source.pk, subject="x" * 201)
+    assert nothing_saved()
+    run(BST, source=source.pk, subject="x" * 200)
+    assert Subject.objects.get().label == "x" * 200
+
+
+@pytest.mark.django_db
 def test_a_name_that_s_already_a_subject_needs_add_to_existing(source: Source) -> None:
     existing = Subject.objects.create(label="Synthetic Person One")
     message = refusal(BST, source=source.pk)

@@ -24,6 +24,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from django.core.exceptions import ValidationError
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
@@ -82,6 +83,14 @@ class Command(BaseCommand):
             except Dataset.DoesNotExist:
                 raise CommandError(f"no dataset named {options['dataset']!r}") from None
         resolution = TimeResolution(options["resolution"]) if options["resolution"] else None
+        if options["subject"] is not None:
+            # A file's own name fits a label (the format allows 100 UTF-16 code units), but the
+            # option might not: SQLite wouldn't enforce its 200 characters, and PostgreSQL would
+            # refuse them only while saving.
+            try:
+                Subject(label=options["subject"]).clean_fields()
+            except ValidationError as error:
+                raise CommandError(f"--subject: {'; '.join(error.messages)}") from None
 
         paths: list[Path] = options["files"]
         planned, refused = _plan(paths, options["subject"], resolution)

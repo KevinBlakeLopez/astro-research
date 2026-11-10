@@ -34,7 +34,7 @@ import convert_open_gauquelin as og
 import pytest
 
 from astro_research.civil_time import resolve
-from research_platform.csv_import import plan_import
+from research_platform.csv_import import plan_import, read_text
 from research_platform.models import Category, Source, Variable
 
 HEADER = [
@@ -426,7 +426,9 @@ def test_the_import_takes_both_files_and_the_source_s_universal_times(tmp_path: 
     assert og.main([str(source_file(tmp_path, rows)), "--seed", "3", "--out", str(out)]) == 0
     source = Source.objects.create(citation="A synthetic source")
 
-    plan = plan_import(out / "champions.csv", source, add_to_existing=False)
+    plan = plan_import(
+        read_text((out / "champions.csv").read_bytes()), source, add_to_existing=False
+    )  # as import_csv reads it
     assert (plan.refused, plan.total, plan.values) == ({}, 5, 5)
     universal = {row["GQID"]: row["DATE-UT"] for row in rows}
     for planned in plan.rows:
@@ -436,7 +438,9 @@ def test_the_import_takes_both_files_and_the_source_s_universal_times(tmp_path: 
         assert resolved.utc == expected.replace(tzinfo=UTC), planned.label
         assert [value.category.name for value in planned.values if value.category] == ["champion"]
 
-    controls = plan_import(out / "controls.csv", source, add_to_existing=False)
+    controls = plan_import(
+        read_text((out / "controls.csv").read_bytes()), source, add_to_existing=False
+    )
     assert (controls.refused, controls.total, controls.values) == ({}, 5, 5)
 
 

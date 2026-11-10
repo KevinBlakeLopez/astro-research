@@ -1,0 +1,34 @@
+{% extends "research_platform/base.html" %}
+{% block title %}Import {{ pending.file_name }}{% endblock %}
+{% block content %}
+<h1>Import {{ pending.file_name }}</h1>
+<p>Uploaded {{ pending.uploaded_at|date:"Y-m-d H:i T" }}. Every record and value will cite <strong>{{ pending.source }}</strong>{% if pending.dataset %}, and the records will be added to the dataset <a href="{% url 'dataset' pending.dataset.pk %}">{{ pending.dataset.name }}</a>{% endif %}.{% if pending.add_to_existing %} A subject already here, or on two lines, is taken to be the same person.{% endif %}</p>
+{% if refusal %}
+{% include "research_platform/import_refusal.html" %}
+<p><a href="{% url 'csv-import' %}">Upload a corrected file</a></p>
+{% else %}
+<p><strong>{{ summary }}.</strong> Check the rows as they were read before importing: a mistake that passes every check, such as latitude and longitude swapped or the wrong zone, shows here.</p>
+<form method="post" action="{% url 'pending-import-save' pending.pk %}">
+  {% csrf_token %}
+  <button type="submit">Import</button>
+</form>
+<p><a href="{% url 'csv-import' %}">Upload a different file instead</a></p>
+<div class="scroll"><table>
+  <thead><tr><th>Line</th><th class="name">Subject</th><th class="name">Time as given</th><th class="name">UTC</th><th class="name">Offset</th><th>Latitude</th><th>Longitude</th>{% for variable in variables %}<th class="name">{{ variable.name }}</th>{% endfor %}</tr></thead>
+  <tbody>
+  {% for row in rows %}
+  <tr data-line="{{ row.line }}">
+    <td>{{ row.line }}</td>
+    <td data-cell="subject" class="name">{{ row.subject }}</td>
+    <td data-cell="time" class="name">{{ row.time }}</td>
+    <td data-cell="utc" class="name">{{ row.utc }}</td>
+    <td data-cell="offset" class="name">{{ row.offset }}</td>
+    <td data-cell="latitude">{{ row.latitude }}</td>
+    <td data-cell="longitude">{{ row.longitude }}</td>
+    {% for name, value in row.values %}<td data-variable="{{ name }}" class="name">{{ value|default:"—" }}</td>{% endfor %}
+  </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% endif %}
+{% endblock %}

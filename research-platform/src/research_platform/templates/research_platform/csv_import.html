@@ -1,0 +1,50 @@
+{% extends "research_platform/base.html" %}
+{% block title %}Import a spreadsheet{% endblock %}
+{% block content %}
+<h1>Import a spreadsheet</h1>
+<p>Import birth records, and what's known about each subject, from a spreadsheet saved as CSV, with a row per subject. Uploading only checks the file: you'll see each row as it was read before anything is imported. If any row is refused, nothing is imported.</p>
+{% if waiting %}
+<p>Waiting to be imported: <a href="{% url 'pending-import' waiting.pk %}">{{ waiting.file_name }}</a>, uploaded {{ waiting.uploaded_at|date:"Y-m-d H:i T" }}. Another file that passes its check replaces it.</p>
+{% endif %}
+{% if refusal %}{% include "research_platform/import_refusal.html" %}{% endif %}
+
+{% if sources %}
+<form method="post" enctype="multipart/form-data" action="{% url 'csv-import' %}">
+  {% csrf_token %}
+  {{ form.as_p }}
+  <button type="submit">Upload and check</button>
+</form>
+{% else %}
+<p>Every record and value cites a source, and there's none yet. <a href="{% url 'admin:research_platform_source_add' %}">Add a source in the admin</a> first, then come back here.</p>
+{% endif %}
+
+<h2>The columns</h2>
+<p><a href="{% url 'csv-import-template' %}">Download a blank CSV</a> with every column as its header row, and fill it in. In Excel, save it as <strong>CSV UTF-8 (Comma delimited)</strong>: the file must be UTF-8, with its columns separated by commas. The first row names the columns, in any order.</p>
+<p>Every row needs:</p>
+<ul>
+  <li><code>subject</code>: the subject's label, as you'll know them here.</li>
+  <li><code>time</code>: the birth time as the source gives it, a date and time without an offset, such as <code>1987-06-15T04:25</code> or <code>1987-06-15 04:25</code>.</li>
+  <li><code>time_kind</code>: what <code>time</code> is. <code>utc</code>: a UTC time. <code>zone</code>: the clock in <code>zone</code>. <code>offset</code>: the clock at <code>utc_offset</code>. <code>local-mean-time</code>: the birthplace's local mean time.</li>
+  <li><code>latitude</code> and <code>longitude</code>: the birthplace in decimal degrees, north and east positive.</li>
+</ul>
+<p>And may have:</p>
+<ul>
+  <li><code>zone</code>: for a zone row, a time zone by its name in the time-zone database, such as <code>Europe/London</code>.</li>
+  <li><code>utc_offset</code>: for an offset row, its offset from UTC, such as <code>+01:00</code>, <code>-05:30</code> or <code>+00:09:21</code>. A zone row may state it too, and it's checked against the zone.</li>
+  <li><code>elevation_m</code>: the birthplace's elevation, in metres.</li>
+  <li><code>time_resolution</code>: how precisely the time was recorded: <code>hour</code>, <code>minute</code> or <code>second</code>.</li>
+  <li><code>stated_uncertainty_s</code>: the uncertainty the source states, in seconds.</li>
+  <li><code>accept_pre_1970_tzdb</code>: <code>yes</code> to accept the time-zone database's offset for a zone row before 1970, where it's less certain.</li>
+</ul>
+{% if variables %}
+<p>Then a column for each variable, named exactly as it is. An empty cell is a missing value.</p>
+<ul>
+  {% for variable in variables %}
+  <li><code>{{ variable.name }}</code>: {% if variable.kind == "category" %}one of {% for category in variable.categories.all %}{{ category.name }}{% if not forloop.last %}, {% endif %}{% endfor %}{% elif variable.kind == "number" %}a number{% if variable.unit %}, in {{ variable.unit }}{% endif %}{% else %}yes or no{% endif %}.</li>
+  {% endfor %}
+</ul>
+{% else %}
+<p>No variables are defined yet. <a href="{% url 'admin:research_platform_variable_add' %}">Add one in the admin</a> to import what's known about each subject, such as a profession.</p>
+{% endif %}
+<p>A column that's none of these refuses the file, so a misspelt heading can't quietly drop a variable.</p>
+{% endblock %}

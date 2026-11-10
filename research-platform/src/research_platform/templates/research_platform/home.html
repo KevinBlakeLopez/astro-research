@@ -3,9 +3,9 @@
 {% block content %}
 <h1>Research platform</h1>
 {% if empty %}
-<p>Nothing here yet. Start by <a href="{% url 'admin:research_platform_record_add' %}">adding a record</a> in the admin, or import AstroChart Bridge files with <code>python manage.py import_charts</code>.</p>
+<p>Nothing here yet. Start by <a href="{% url 'csv-import' %}">importing a spreadsheet</a> of birth records, or <a href="{% url 'admin:research_platform_record_add' %}">add a record</a> in the admin.</p>
 {% else %}
-<p><a href="{% url 'admin:research_platform_record_add' %}">Add a record</a> in the admin.</p>
+<p><a href="{% url 'csv-import' %}">Import a spreadsheet</a>, or <a href="{% url 'admin:research_platform_record_add' %}">add a record</a> in the admin.</p>
 {% endif %}
 
 <ul class="places">

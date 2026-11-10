@@ -11,7 +11,9 @@ These are kept apart, as the brief asks:
   `RunOutcome` per record: its chart, or the engine's refusal of it;
 - a `StoredChart` is one chart's chart-result-v1 text, kept once under its calculation key and
   shared by every run that produced it;
-- an `ImportedChart` is the AstroChart Bridge file a record was imported from, exactly as it was.
+- an `ImportedChart` is the AstroChart Bridge file a record was imported from, exactly as it was;
+- a `PendingImport` is a CSV file uploaded from the import page that passed its check and waits
+  to be imported.
 
 What's known about each subject is in variables:
 
@@ -37,6 +39,7 @@ import math
 from datetime import datetime, timedelta
 from typing import Any, assert_never
 
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 
@@ -240,6 +243,28 @@ class Dataset(models.Model):
 
     def __str__(self) -> str:
         return self.name
+
+
+class PendingImport(models.Model):
+    """A CSV file uploaded from the import page that passed its check, waiting to be imported
+    with the choices it was uploaded with. An account has one at most: the next file to pass
+    replaces it, and importing deletes it. It's checked again when shown and when imported,
+    since a subject or a variable may have changed in the meantime."""
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="pending_import"
+    )
+    file_name = models.CharField(max_length=255)
+    text = models.TextField(help_text="The file's text, without Excel's byte order mark.")
+    source = models.ForeignKey(Source, on_delete=models.CASCADE, related_name="+")
+    dataset = models.ForeignKey(
+        Dataset, on_delete=models.CASCADE, null=True, blank=True, related_name="+"
+    )
+    add_to_existing = models.BooleanField(default=False)
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self) -> str:
+        return self.file_name
 
 
 class StoredChart(models.Model):

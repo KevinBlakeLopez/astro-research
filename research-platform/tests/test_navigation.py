@@ -72,6 +72,7 @@ DOWNLOADS = {
     "run-points-csv",
     "run-pairs-csv",
     "result-inputs-csv",
+    "csv-import-template",
 }
 # Every kind of page a crawl from home must reach. A comparison is opened from the admin's
 # record list, and a hypothesis with results can't be edited, so neither is here.
@@ -92,6 +93,7 @@ PAGES = {
     "hypotheses",
     "hypothesis",
     "hypothesis-new",
+    "csv-import",
 }
 
 
@@ -215,6 +217,7 @@ def test_the_home_page_shows_the_five_latest_runs_and_results(
 def test_an_empty_platform_s_home_page_says_where_to_start(admin_client: Client) -> None:
     text = page(admin_client, reverse("home"))
     assert "Nothing here yet" in text
+    assert f'href="{reverse("csv-import")}"' in outside_header(text)  # the header has it too
     assert f'href="{reverse("admin:research_platform_record_add")}"' in text
     for name in PLACES:
         assert re.search(r'class="count">\s*0\s*<', place(text, name)), name

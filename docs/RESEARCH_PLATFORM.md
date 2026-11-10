@@ -221,7 +221,7 @@ Across all the rows, `DATE` and `DATE-UT` are more than 3 hours apart in 18, and
   - a `TZO` a minute or more from the offset. The reading is only to the minute, so smaller differences are within what it can say.
 - **The subject** is the row's `GQID`, such as `A1-1`. The names stay in the source's file.
 
-**The controls.** A control keeps a champion's date, offset and place, and takes another champion's clock time. This breaks the link between a birth and its time of day without working out any offset anew. The champions are put in order by the SHA-256 of `<seed>:<GQID>`, and each takes its clock time from the next one in that order (the last from the first). So no control has its own champion's time, and every clock time is used once. No random-number generator is involved, so a seed gives the same controls on any Python version. Controls are numbered `control-0001` and up, in their champions' order.
+**The controls.** A control keeps a champion's date, offset and place, and takes another champion's clock time. This breaks the link between a birth and its time of day without working out any offset anew. The champions are put in order by the SHA-256 of `<seed>:<GQID>`, and each takes its clock time from the next one in that order (the last from the first). So no control takes its time from its own champion, and every champion's time is used once. A control still has its champion's clock time when the champion it takes it from was born at the same time, and then their charts are the same. That's deliberate: in a shuffle, drawing a time equal to one's own is part of chance, and refusing it would make the controls unlike the champions. No random-number generator is involved, so a seed gives the same controls on any Python version. Controls are numbered `control-0001` and up, in their champions' order.
 
 **Converting and importing.** Download `A1.csv.zip` from the site's [historical datasets](https://opengauquelin.org/history) and unzip it. Then:
 
@@ -252,6 +252,8 @@ Then run `import_csv` on each file, with its own source and `--dataset`. The dat
   - `TZO` disagreeing, 22.
 - **The import's check:** both files pass `import_csv --check` with nothing refused.
 - **Universal time:** every champion's record resolves to exactly the source's `DATE-UT`.
+- **Shared clock times:** 1,979 of the 2,045 champions share a clock time with another, since most times are on the hour or half hour. With seed 1, 53 controls have their own champion's clock time.
+- **Computing it** with `--aspects major` took 10.7 seconds on an Apple silicon Mac. It made 4,090 charts and refused none. 53 were reused: those controls' charts are their champions'. The data folder came to 464 MiB.
 
 ## The web interface
 

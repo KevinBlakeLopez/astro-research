@@ -19,9 +19,12 @@ from the offset.
 
 A control keeps a champion's date, offset and place, and takes another champion's clock time.
 The champions are put in order by the SHA-256 of "<seed>:<GQID>", and each takes its clock time
-from the next in that order (the last from the first), so no control has its own champion's
-time and every clock time is used once. No random-number generator is involved, so the same
-seed gives the same controls on any Python version.
+from the next in that order (the last from the first), so no control takes its time from its
+own champion, and every champion's time is used once. A control still has its champion's clock
+time when the champion it takes it from was born at the same time, and then their charts are
+the same. That's deliberate: in a shuffle, drawing a time equal to one's own is part of chance,
+and refusing it would make the controls unlike the champions. No random-number generator is
+involved, so the same seed gives the same controls on any Python version.
 
 The import needs a category variable `group` with the categories champion and control, and a
 source for each file: the database's group for the champions, and this script, its commit and

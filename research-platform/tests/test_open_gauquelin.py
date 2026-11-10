@@ -16,9 +16,11 @@ read, an offset of more than 3 hours either way, or a TZO a minute or more from 
 
 A control keeps a champion's date, offset and place and takes another champion's clock time.
 The champions are put in order by the SHA-256 of "<seed>:<GQID>", and each takes its clock time
-from the next in that order (the last from the first), so no control has its own champion's
-time and every clock time is used once. The same seed gives the same controls on any Python
-version, since no random-number generator is involved.
+from the next in that order (the last from the first), so no control takes its time from its
+own champion, and every champion's time is used once. A control still has its champion's clock
+time when the champion it takes it from was born at the same time; that isn't avoided. The same
+seed gives the same controls on any Python version, since no random-number generator is
+involved.
 
 Every person here is made up.
 """
@@ -27,6 +29,7 @@ import csv
 import hashlib
 import io
 from collections import Counter
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -316,16 +319,40 @@ def test_a_control_takes_another_champion_s_clock_time_and_each_is_used_once(
     assert Counter(c.local.time() for c in made) == Counter(c.local.time() for c in kept)
 
 
-def test_the_clock_times_follow_the_seed_s_order(tmp_path: Path) -> None:
-    kept = champions(tmp_path, 10)
+def givers(kept: list[og.Birth], seed: int) -> dict[str, og.Birth]:
+    """Whose clock time each champion's control takes, by the rule: the next champion in the
+    order of SHA-256 of "<seed>:<GQID>", the last taking the first's."""
 
     def digest(birth: og.Birth) -> str:
-        return hashlib.sha256(f"7:{birth.label}".encode()).hexdigest()
+        return hashlib.sha256(f"{seed}:{birth.label}".encode()).hexdigest()
 
     order = sorted(kept, key=digest)
-    giver = {birth.label: order[(k + 1) % len(order)] for k, birth in enumerate(order)}
+    return {birth.label: order[(k + 1) % len(order)] for k, birth in enumerate(order)}
+
+
+def test_the_clock_times_follow_the_seed_s_order(tmp_path: Path) -> None:
+    kept = champions(tmp_path, 10)
+    giver = givers(kept, seed=7)
     made = og.controls(kept, seed=7)
     assert [c.local.time() for c in made] == [giver[c.label].local.time() for c in kept]
+
+
+def test_a_control_can_have_its_champion_s_clock_time(tmp_path: Path) -> None:
+    rows = [
+        person(
+            n,
+            DATE=f"1930-01-{n:02d} {hour:02d}:00",
+            TZO="",
+            **{"DATE-UT": f"1930-01-{n:02d} {hour - 1:02d}:00"},
+        )
+        for n, hour in zip(range(1, 11), [12, 8] * 5, strict=True)
+    ]  # born at noon or at 8, as most real times are on the hour
+    kept = converted(tmp_path, rows).champions
+    giver = givers(kept, seed=7)
+    made = og.controls(kept, seed=7)
+    assert [c.local.time() for c in made] == [giver[c.label].local.time() for c in kept]
+    same = [c.label for c, k in zip(made, kept, strict=True) if c == replace(k, label=c.label)]
+    assert same  # some controls are their champions under another label: that's not avoided
 
 
 def test_the_same_seed_gives_the_same_controls_and_another_seed_others(tmp_path: Path) -> None:

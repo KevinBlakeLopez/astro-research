@@ -1,0 +1,6 @@
+# Made by build.py: Briefcase's output, the wheels it installs, and the files the app carries
+/build/
+/dist/
+/logs/
+/wheels/
+/src/astro_research_app/ephe/

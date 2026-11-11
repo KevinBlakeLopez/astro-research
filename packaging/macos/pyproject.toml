@@ -1,0 +1,54 @@
+# Briefcase's setup for the Mac app, which is built by build.py next to this file: see
+# "Building the Mac app" in docs/RESEARCH_PLATFORM.md. It isn't a uv workspace member.
+#
+# `requires` is uv.lock's pins for the research platform's desktop extra on an Apple silicon
+# Mac, plus this repository's two packages and std-nslog, which sends the app's output to the
+# macOS log. research-platform/tests/test_mac_packaging.py keeps it equal to uv.lock.
+
+[project]
+name = "astroresearch"
+version = "0.1.0"
+description = "Astrology research: records, charts, features and hypotheses, on this Mac."
+license = "AGPL-3.0-or-later"
+license-files = ["../../LICENSE"]
+authors = [{ name = "Kevin Lopez", email = "80014258+KevinBlakeLopez@users.noreply.github.com" }]
+
+[tool.briefcase]
+project_name = "astroresearch"
+bundle = "io.github.kevinblakelopez"
+url = "https://github.com/KevinBlakeLopez/astro-research"
+
+[tool.briefcase.app.astroresearch]
+formal_name = "Astro Research"  # a placeholder name
+app_name = "astro_research_app"
+sources = ["src/astro_research_app"]
+# build.py puts this repository's wheels, and proxy-tools' (published only as source), here.
+requirement_installer_args = ["--find-links", "wheels"]
+requires = [
+    "asgiref==3.13.0",
+    "astro-research==0.1.0",
+    "bottle==0.13.4",
+    "django==6.1.3",
+    "django-stubs-ext==6.1.2",
+    "proxy-tools==0.1.0",
+    "psycopg==3.3.8",
+    "psycopg-binary==3.3.8",
+    "pyobjc-core==13.0",
+    "pyobjc-framework-cocoa==13.0",
+    "pyobjc-framework-quartz==13.0",
+    "pyobjc-framework-security==13.0",
+    "pyobjc-framework-uniformtypeidentifiers==13.0",
+    "pyobjc-framework-webkit==13.0",
+    "pysweph==2.10.3.6",
+    "pywebview==6.2.1",
+    "research-platform==0.1.0",
+    "sqlparse==0.6.1",
+    "std-nslog==2.0.0",
+    "typing-extensions==4.16.0",
+    "tzdata==2026.6",
+    "waitress==3.0.2",
+]
+
+[tool.briefcase.app.astroresearch.macOS]
+# pysweph publishes no ready-built package for Intel Macs, so the app is for Apple silicon.
+universal_build = false

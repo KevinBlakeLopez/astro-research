@@ -1,0 +1,29 @@
+# Builds the Mac app's disk image on an Apple silicon runner, with packaging/macos/build.py,
+# and keeps it as this run's download. It runs only when started by hand, and publishes nothing.
+name: Mac app
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15  # Apple silicon
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
+        with:
+          version: "0.13.6"
+      - name: Build the app and its disk image
+        run: uv run python packaging/macos/build.py
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: astro-research-mac
+          path: packaging/macos/dist/*.dmg
+          if-no-files-found: error
+          retention-days: 14

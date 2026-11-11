@@ -50,7 +50,7 @@ known-first-party = ["astro_research", "research_platform"]
 
 [tool.mypy]
 strict = true
-files = ["src", "tests", "scripts"]
+files = ["src", "tests", "scripts", "packaging/macos/build.py"]
 
 [[tool.mypy.overrides]]
 # pysweph and pyerfa ship no type information. The adapter converts Swiss Ephemeris results to

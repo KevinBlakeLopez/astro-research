@@ -479,7 +479,7 @@ cd research-platform && RESEARCH_DEBUG=1 uv run python manage.py runserver 127.0
 
 ## The desktop app
 
-The platform also runs as a desktop app, in its own window. It's for researchers who aren't developers: nothing needs installing but the app, and their data stays on their own computer. For now it runs from the source checkout; installers for Mac and Windows come later.
+The platform also runs as a desktop app, in its own window. It's for researchers who aren't developers: nothing needs installing but the app, and their data stays on their own computer. It runs from the source checkout, or as a Mac app (see "Building the Mac app" below); a Windows installer comes later.
 
 ```bash
 uv run --package research-platform --extra desktop python -m research_platform.desktop
@@ -496,13 +496,33 @@ At each launch it:
 
 **A Back button** is in the header in the app, since a window has no browser's; it goes back as a browser's would.
 
-**Not yet:**
-- **Installers:** signed ones for Mac and Windows, built on GitHub's machines. `pysweph` publishes no ready-built package for Intel Macs (checked on PyPI), so those would need Swiss Ephemeris built from source.
-  - **A spike with Briefcase 0.4.7** built an Apple silicon app of 177 MB that launches, sets up its data folder and serves its pages (observed). pywebview's dependency `proxy-tools` is published only as source, so its wheel has to be built first.
-  - **Signing re-signs `swisseph`'s module,** which changes its bytes. Briefcase's ad-hoc signing made it 786,448 bytes instead of 772,864 (observed), and any Mac app must be signed. So the engine's check that the module is byte for byte the one pysweph installed can't pass inside the app.
-  - **The check is made when the app is built instead.** After Briefcase installs the app's packages and before it signs them, `python -m astro_research.build_record PATH`, run with the app's own Python, checks the module byte for byte and writes a record of what matched: pysweph's version, the module's file name and its SHA-256. The app's launcher hands the record to `astro_research.ephemeris.use_build_record` before anything is calculated. With the record in use, a module whose bytes have changed is accepted, as long as the record names the pinned version, this module and the SHA-256 pysweph recorded. Afterwards, the app's signature covers the module.
-  - **In the spike's signed app (observed):** without the record, the engine refused to open the ephemeris. With it, a chart came out identical to the dev install's, all 17 points and the ARMC.
+**Building the Mac app.** [Briefcase](https://briefcase.beeware.org/) 0.4.7 builds it as `Astro Research.app`, with its own Python 3.13 inside, for Apple silicon only: `pysweph` publishes no ready-built package for Intel Macs (checked on PyPI). Its setup is `packaging/macos/pyproject.toml`, and one script builds it the same way here and on GitHub:
+
+```bash
+uv run python packaging/macos/build.py
+```
+
+- **What it does:**
+  1. builds this repository's two packages as wheels, and `proxy-tools`' (a pywebview dependency that PyPI has only as source; Briefcase installs only ready-built packages);
+  2. fetches the ephemeris files into the app's own folder, checking each one's SHA-256;
+  3. runs `briefcase create`;
+  4. writes the build record (below);
+  5. runs `briefcase build`, which signs the app ad hoc;
+  6. runs `briefcase package`, which makes the disk image, `packaging/macos/dist/Astro Research-0.1.0.dmg`.
+
+  It deletes its own earlier output first. Observed on an Apple silicon Mac: 73 seconds, a 180 MB app and a 41 MiB disk image.
+- **The app's launcher** is `research_platform.mac_app`. It points `RESEARCH_EPHE_DIR` at the app's own ephemeris files, hands the build record to the engine, and opens the window as `desktop.main([])` does.
+- **Its packages** are `uv.lock`'s pins for the `desktop` extra on an Apple silicon Mac, plus this repository's two packages, plus `std-nslog`, which sends the app's output to the macOS log. A test keeps the list equal to `uv.lock`.
+- **The build record.** Signing re-signs `swisseph`'s module, which changes its bytes: ad-hoc signing made it 786,448 bytes instead of 772,864 (observed). Any Mac app must be signed, so the engine's check that the module is byte for byte the one pysweph installed can't pass inside the app.
+  - **So the check is made when the app is built.** After `briefcase create` and before `briefcase build`, `python -m astro_research.build_record PATH`, run with the app's own Python, checks the module byte for byte. It writes a record of what matched: pysweph's version, the module's file name and its SHA-256.
+  - **The launcher hands the record** to `astro_research.ephemeris.use_build_record` before anything is calculated. With the record in use, a module whose bytes have changed is accepted, as long as the record names the pinned version, this module and the SHA-256 pysweph recorded. From then on, the app's signature covers the module.
+  - **Observed in the built app:** without the record, the engine refused to open the ephemeris. With it, a chart came out identical to the dev install's, all 17 points and the ARMC.
   - **The binding is still "pysweph 2.10.3.6",** so the same chart has the same calculation key in the app and in a dev install.
+- **On GitHub,** the workflow "Mac app" (`.github/workflows/mac-app.yml`) runs the same script on an Apple silicon runner and keeps the disk image as the run's download for 14 days. It runs only when started by hand from the repository's **Actions** tab, and publishes nothing.
+- **Not yet known:** whether macOS opens this ad-hoc-signed app on another Mac. Briefcase's docs say such an app won't run on other computers, and macOS Sequoia's **Open Anyway** (System Settings → Privacy & Security) may or may not offer it. Downloading the disk image from a workflow run onto a Mac and opening it settles that.
+
+**Not yet:**
+- **Installers:** a Windows one, and one an Intel Mac can run, which would need Swiss Ephemeris built from source. Signing with an Apple Developer ID ($99 a year) would let a Mac open the app without **Open Anyway**.
 - **A way to back up the data.**
 - **Data entry friendlier than the admin,** beyond importing a CSV file.
 - **An open question:** whether the window's file picker works, which the import page needs. pywebview 6.2.1's macOS code opens a file panel for a file input (read in its source, `webView_runOpenPanelWithParameters…` in `platforms/cocoa.py`), but that hasn't been run; step 8 below checks it.

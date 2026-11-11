@@ -519,10 +519,17 @@ uv run python packaging/macos/build.py
   - **Observed in the built app:** without the record, the engine refused to open the ephemeris. With it, a chart came out identical to the dev install's, all 17 points and the ARMC.
   - **The binding is still "pysweph 2.10.3.6",** so the same chart has the same calculation key in the app and in a dev install.
 - **On GitHub,** the workflow "Mac app" (`.github/workflows/mac-app.yml`) runs the same script on an Apple silicon runner and keeps the disk image as the run's download for 14 days. It runs only when started by hand from the repository's **Actions** tab, and publishes nothing.
-- **Not yet known:** whether macOS opens this ad-hoc-signed app on another Mac. Briefcase's docs say such an app won't run on other computers, and macOS Sequoia's **Open Anyway** (System Settings → Privacy & Security) may or may not offer it. Downloading the disk image from a workflow run onto a Mac and opening it settles that.
+- **Opening it, observed** with the disk image from a workflow run, downloaded onto an Apple silicon Mac with macOS 26.6.2:
+  1. **The disk image was refused.** macOS said it was "Not Opened", as Apple "could not verify" it was free of malware, and offered only **Move to Trash** and **Done**. Every downloaded file carries a quarantine mark that sends it to this check, and the image is signed ad hoc and not notarized.
+  2. **Open Anyway opened it.** After **Done**, System Settings → Privacy & Security had **Open Anyway** for it under **Security**. With that pressed and confirmed, the disk image opened.
+  3. **The app was refused the same way** the first time it was opened from Applications, since the copy dragged there keeps the quarantine mark. **Open Anyway** a second time opened it, showing the data already in the app's folder.
+  4. **The build record written on GitHub's runner** passed the binding check in the downloaded app, and without it the check refused.
+
+  So an ad-hoc-signed app built on another machine does open, after two trips to **Open Anyway**, although Briefcase's docs say such an app won't run on other computers. Not tried yet: a Mac without Xcode, an older macOS, and calculating a chart in the downloaded app's window.
 
 **Not yet:**
 - **Installers:** a Windows one, and one an Intel Mac can run, which would need Swiss Ephemeris built from source. Signing with an Apple Developer ID ($99 a year) would let a Mac open the app without **Open Anyway**.
+- **A download for testers without a GitHub account.** A workflow run's download needs a GitHub login, and is kept for 14 days.
 - **A way to back up the data.**
 - **Data entry friendlier than the admin,** beyond importing a CSV file.
 - **An open question:** whether the window's file picker works, which the import page needs. pywebview 6.2.1's macOS code opens a file panel for a file input (read in its source, `webView_runOpenPanelWithParameters…` in `platforms/cocoa.py`), but that hasn't been run; step 8 below checks it.

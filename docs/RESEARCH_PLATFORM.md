@@ -498,6 +498,11 @@ At each launch it:
 
 **Not yet:**
 - **Installers:** signed ones for Mac and Windows, built on GitHub's machines. `pysweph` publishes no ready-built package for Intel Macs (checked on PyPI), so those would need Swiss Ephemeris built from source.
+  - **A spike with Briefcase 0.4.7** built an Apple silicon app of 177 MB that launches, sets up its data folder and serves its pages (observed). pywebview's dependency `proxy-tools` is published only as source, so its wheel has to be built first.
+  - **Signing re-signs `swisseph`'s module,** which changes its bytes. Briefcase's ad-hoc signing made it 786,448 bytes instead of 772,864 (observed), and any Mac app must be signed. So the engine's check that the module is byte for byte the one pysweph installed can't pass inside the app.
+  - **The check is made when the app is built instead.** After Briefcase installs the app's packages and before it signs them, `python -m astro_research.build_record PATH`, run with the app's own Python, checks the module byte for byte and writes a record of what matched: pysweph's version, the module's file name and its SHA-256. The app's launcher hands the record to `astro_research.ephemeris.use_build_record` before anything is calculated. With the record in use, a module whose bytes have changed is accepted, as long as the record names the pinned version, this module and the SHA-256 pysweph recorded. Afterwards, the app's signature covers the module.
+  - **In the spike's signed app (observed):** without the record, the engine refused to open the ephemeris. With it, a chart came out identical to the dev install's, all 17 points and the ARMC.
+  - **The binding is still "pysweph 2.10.3.6",** so the same chart has the same calculation key in the app and in a dev install.
 - **A way to back up the data.**
 - **Data entry friendlier than the admin,** beyond importing a CSV file.
 - **An open question:** whether the window's file picker works, which the import page needs. pywebview 6.2.1's macOS code opens a file panel for a file input (read in its source, `webView_runOpenPanelWithParameters…` in `platforms/cocoa.py`), but that hasn't been run; step 8 below checks it.

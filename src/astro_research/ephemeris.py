@@ -4,6 +4,9 @@ It starts with the one-time environment check that every calculation depends on.
 fails closed (decision D1), so `verify_ephemeris()` confirms, in order:
 
 1. The `swisseph` module is the pysweph build the project pins, byte for byte as installed.
+   In a Mac app, whose signing changes the module's bytes, that was checked when the app was
+   built, before signing (`write_build_record`), and the app's launcher says so
+   (`use_build_record`).
 2. The data folder holds exactly the manifest's files, each matching its SHA-256.
 3. Swiss Ephemeris, asked for its full-precision ephemeris, really loaded those files: the
    returned flag says so, and each loaded file lies inside the folder with the manifest's DE
@@ -324,7 +327,89 @@ def _packaged_ut1() -> Ut1Table:
     return verify_ut1_data(importlib.resources.files("astro_research").joinpath(name))
 
 
+@dataclass(frozen=True, kw_only=True)
+class BuildRecord:
+    """What matched when an app was built, before signing changed the module's bytes."""
+
+    pysweph: str  # the installed version, which is the pinned one
+    module: str  # the swisseph module's file name
+    sha256: str  # hex: the module's, which was the one pysweph recorded
+
+
+_BUILD_RECORD_FIELDS = ("pysweph", "module", "sha256")
+_build_record: BuildRecord | None = None  # in use, from use_build_record
+
+
+def write_build_record(path: Path) -> BuildRecord:
+    """Check the module byte for byte against pysweph's install record and write what matched
+    to `path`; raise BindingMismatch, writing nothing, if it doesn't match.
+
+    A Mac app's packages are checked like this after they're installed and before they're
+    signed, since signing re-signs the module and so changes its bytes."""
+    version, recorded = _pysweph_install()
+    actual = _module_sha256()
+    if actual != recorded:
+        raise BindingMismatch(f"{swe.__file__} is not the module pysweph {version} installed")
+    record = BuildRecord(pysweph=version, module=Path(swe.__file__).name, sha256=actual)
+    path.write_text(
+        "# Written by python -m astro_research.build_record: swisseph's module matched\n"
+        "# pysweph's install record when the app was built, before it was signed.\n"
+        + "".join(f'{field} = "{getattr(record, field)}"\n' for field in _BUILD_RECORD_FIELDS),
+        encoding="utf-8",
+    )
+    return record
+
+
+def use_build_record(path: Path) -> None:
+    """From now on, accept a module whose bytes changed after the build that wrote `path`.
+
+    The record is checked at once against the pinned pysweph version, this module's file name
+    and the SHA-256 pysweph recorded for it; one that doesn't fit raises BindingMismatch and
+    relaxes nothing. A Mac app's launcher calls this: its signature covers the module after
+    the build checked it."""
+    global _build_record
+    try:
+        raw = tomllib.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        raise BindingMismatch(f"build record {path} is missing") from None
+    except (UnicodeDecodeError, tomllib.TOMLDecodeError) as error:
+        raise BindingMismatch(f"build record {path} can't be read: {error}") from None
+    for field in _BUILD_RECORD_FIELDS:
+        if field not in raw:
+            raise BindingMismatch(f"build record {path} can't be read: it has no {field}")
+    extra = sorted(set(raw) - set(_BUILD_RECORD_FIELDS))
+    if extra:
+        raise BindingMismatch(
+            f"build record {path} can't be read: it has {extra[0]}, which a build record doesn't"
+        )
+    for field in _BUILD_RECORD_FIELDS:
+        if not isinstance(raw[field], str):
+            raise BindingMismatch(f"build record {path} can't be read: {field} isn't text")
+    record = BuildRecord(**raw)
+    version, recorded = _pysweph_install()
+    misfit = _misfit(record, version, recorded)
+    if misfit is not None:
+        raise BindingMismatch(f"build record {path} {misfit}")
+    _build_record = record
+
+
 def _verify_binding() -> str:
+    version, recorded = _pysweph_install()
+    # pyswisseph installs the same `swisseph` module file and silently overwrites pysweph's
+    # (pip check still passes). The bytes on disk must match what pysweph recorded at install,
+    # unless a build record in use says they did when the app was built (use_build_record).
+    if _module_sha256() != recorded:
+        if _build_record is None:
+            raise BindingMismatch(f"{swe.__file__} is not the module pysweph {version} installed")
+        misfit = _misfit(_build_record, version, recorded)
+        if misfit is not None:
+            raise BindingMismatch(f"the build record in use {misfit}")
+    return f"pysweph {version}"
+
+
+def _pysweph_install() -> tuple[str, str]:
+    """pysweph's installed version, which must be the pinned one, and the SHA-256 (hex) it
+    recorded for the swisseph module when it was installed."""
     pinned = _pinned_pysweph_version()
     try:
         dist = importlib.metadata.distribution("pysweph")
@@ -332,8 +417,6 @@ def _verify_binding() -> str:
         raise BindingMismatch("pysweph is not installed") from None
     if dist.version != pinned:
         raise BindingMismatch(f"pysweph {dist.version} is installed; the project pins {pinned}")
-    # pyswisseph installs the same `swisseph` module file and silently overwrites pysweph's
-    # (pip check still passes). The bytes on disk must match what pysweph recorded at install.
     recorded = [
         f
         for f in dist.files or ()
@@ -341,10 +424,24 @@ def _verify_binding() -> str:
     ]
     if len(recorded) != 1 or recorded[0].hash is None or recorded[0].hash.mode != "sha256":
         raise BindingMismatch("pysweph's install record has no SHA-256 for the swisseph module")
-    actual = hashlib.sha256(Path(swe.__file__).read_bytes()).digest()
-    if base64.urlsafe_b64encode(actual).rstrip(b"=").decode() != recorded[0].hash.value:
-        raise BindingMismatch(f"{swe.__file__} is not the module pysweph {dist.version} installed")
-    return f"pysweph {dist.version}"
+    value = recorded[0].hash.value  # URL-safe base64 without its padding, as wheels write it
+    return dist.version, base64.urlsafe_b64decode(value + "=" * (-len(value) % 4)).hex()
+
+
+def _module_sha256() -> str:
+    return hashlib.sha256(Path(swe.__file__).read_bytes()).hexdigest()
+
+
+def _misfit(record: BuildRecord, version: str, recorded: str) -> str | None:
+    """Why `record` isn't this install's, or None if it is."""
+    module = Path(swe.__file__).name
+    if record.pysweph != version:
+        return f"is for pysweph {record.pysweph}; the project pins {version}"
+    if record.module != module:
+        return f"is for {record.module}, not {module}"
+    if record.sha256 != recorded:
+        return f"has {record.sha256[:12]}…, which isn't the SHA-256 pysweph recorded for {module}"
+    return None
 
 
 def _pinned_pysweph_version() -> str:

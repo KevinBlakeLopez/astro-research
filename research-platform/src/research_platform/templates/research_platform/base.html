@@ -45,5 +45,14 @@
 {% if messages %}<ul class="messages">{% for message in messages %}<li>{{ message }}</li>{% endfor %}</ul>{% endif %}
 {% block content %}{% endblock %}
 </main>
+{# Pressing the button disables it, showing data-once, so what takes a while, such as a run, isn't started twice. A page shown again from the back-forward cache gets its button back. #}
+<script>
+for (const form of document.querySelectorAll("form[data-once]")) {
+  const button = form.querySelector("button[type=submit]");
+  const label = button.textContent;
+  form.addEventListener("submit", () => { button.disabled = true; button.textContent = form.dataset.once; });
+  addEventListener("pageshow", () => { button.disabled = false; button.textContent = label; });
+}
+</script>
 </body>
 </html>

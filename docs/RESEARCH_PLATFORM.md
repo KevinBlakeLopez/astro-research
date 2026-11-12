@@ -243,6 +243,13 @@ It won't overwrite any of them. Before importing:
 
 Then run `import_csv` on each file, with its own source and `--dataset`. The dataset is computed and tested like any other (see [Runs](#runs) and [The research layer](#the-research-layer)).
 
+**In the desktop app, one button does all of this.** While there are no records, the app's home page offers **Load the Gauquelin demo** (`research_platform.demo`):
+- **It downloads `A1.csv.zip` from the site when pressed,** and the data isn't shipped with the app, so each tester gets it from its source. [truststore](https://github.com/sethmlarson/truststore) (0.10.5, MIT) checks the site's certificate against the Mac's own trusted ones: the app's own Python has no certificates to check against, and its downloads failed with `CERTIFICATE_VERIFY_FAILED` (observed). A download of more than 1 MiB is refused, and so is one whose connection waits 30 seconds for the site.
+- **It refuses a file that has changed** since this version was made for it: one whose SHA-256 isn't `5d8b245e…13768`, that of the file of 2024-01-11. So every tester gets the same records.
+- **It converts the file** with seed 1, and in one transaction makes the `group` variable (unless it's already a category with `champion` and `control`), the two sources and the dataset "Gauquelin A1", and imports both files through the import's own checks.
+- **Anything refused changes nothing:** records already there, the dataset's name taken, a `group` variable of another kind, a failed download, a changed file, or a row the import refuses. The reason shows on the home page.
+- **Loading A1's file took 5.3 s** on an Apple silicon Mac (measured, in a throwaway database, without the window). The dataset's page then opens, saying to press **Run** and suggesting a contact feature for Mars on the Ascendant or Midheaven.
+
 **On A1's file of 2024-01-11 (observed):**
 - **Kept:** 2,045 champions, and so 2,045 controls.
 - **Left out:** 43 rows:
@@ -481,7 +488,7 @@ cd research-platform && RESEARCH_DEBUG=1 uv run python manage.py runserver 127.0
 
 ## The desktop app
 
-The platform also runs as a desktop app, in its own window. It's for researchers who aren't developers: nothing needs installing but the app, and their data stays on their own computer. It runs from the source checkout, or as a Mac app (see "Building the Mac app" below); a Windows installer comes later.
+The platform also runs as a desktop app, in its own window. It's for researchers who aren't developers: nothing needs installing but the app, and their data stays on their own computer. Its one download is the Gauquelin demo's public file, and only when **Load the Gauquelin demo** is pressed. It runs from the source checkout, or as a Mac app (see "Building the Mac app" below); a Windows installer comes later.
 
 ```bash
 uv run --package research-platform --extra desktop python -m research_platform.desktop
@@ -497,6 +504,8 @@ At each launch it:
 `--prepare FOLDER` does steps 1 and 2 in a folder of your choosing and exits, without a window. pywebview is an optional dependency (`--extra desktop`), so the tests and the web interface don't install it.
 
 **A Back button** is in the header in the app, since a window has no browser's; it goes back as a browser's would.
+
+**The Gauquelin demo** is offered on the home page while there are no records (see "A demo dataset" above). Its button, like a dataset's **Run** button, is disabled once pressed.
 
 **Building the Mac app.** [Briefcase](https://briefcase.beeware.org/) 0.4.7 builds it as `Astro Research.app`, with its own Python 3.13 inside, for Apple silicon only: `pysweph` publishes no ready-built package for Intel Macs (checked on PyPI). Its setup is `packaging/macos/pyproject.toml`, and one script builds it the same way here and on GitHub:
 
@@ -555,6 +564,7 @@ uv run python packaging/macos/build.py
 7. Close the window. Expect the command to finish. Run it again: expect the window logged in again, on the home page, with step 3's record and dataset counted.
 8. Follow **Import**, and press the file field's button. Expect the system's file picker. Choose the CSV from browser step 74, choose a source, and press **Upload and check**. Expect the waiting file's page with the file's rows.
 9. On the page of a dataset of more than 500 records, such as the Gauquelin demo's, press **Run**. Expect the button to turn grey and read "Running…" until the run's page opens, and no second run when it's pressed again meanwhile. Then press **← Back**. Expect the dataset's page with its **Run** button usable again.
+10. Open the app with an empty data folder: `uv run --package research-platform --extra desktop env HOME="$(mktemp -d)" python -m research_platform.desktop`. On the home page, press **Load the Gauquelin demo**. Expect the button to read "Loading…" for a few seconds, then the page of the dataset "Gauquelin A1", with 4,090 records and a message saying to press **Run**. Then do step 9 on it.
 
 ## Tests
 
@@ -572,4 +582,4 @@ cd research-platform && RESEARCH_DATABASE=postgresql uv run pytest
 cd research-platform && uv run mypy
 ```
 
-Their records are synthetic.
+Their records are synthetic, and none of them touches the network: the Gauquelin demo's download is replaced with a zip of made-up people, made in the test.

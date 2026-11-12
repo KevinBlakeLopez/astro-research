@@ -2,8 +2,17 @@
 {% block title %}Research platform{% endblock %}
 {% block content %}
 <h1>Research platform</h1>
+{% if error %}{% include "research_platform/request_error.html" with error_heading="The demo wasn't loaded:" %}{% endif %}
 {% if empty %}
 <p>Nothing here yet. Start by <a href="{% url 'csv-import' %}">importing a spreadsheet</a> of birth records, or <a href="{% url 'admin:research_platform_record_add' %}">add a record</a> in the admin.</p>
+{% if desktop %}
+<h2>Or try the Gauquelin demo</h2>
+<p>The demo is 2,045 of Michel and Françoise Gauquelin's sports champions, from the Open Gauquelin Database's group A1, each with a shuffled control: 4,090 records in a dataset, to run and test hypotheses on. It downloads one public file of about 80 KB from opengauquelin.org, and only when you press the button.</p>
+<form method="post" action="{% url 'demo-gauquelin' %}" data-once="Loading…">
+  {% csrf_token %}
+  <button type="submit">Load the Gauquelin demo</button>
+</form>
+{% endif %}
 {% else %}
 <p><a href="{% url 'csv-import' %}">Import a spreadsheet</a>, or <a href="{% url 'admin:research_platform_record_add' %}">add a record</a> in the admin.</p>
 {% endif %}

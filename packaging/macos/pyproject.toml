@@ -44,6 +44,7 @@ requires = [
     "research-platform==0.1.0",
     "sqlparse==0.6.1",
     "std-nslog==2.0.0",
+    "truststore==0.10.5",
     "typing-extensions==4.16.0",
     "tzdata==2026.6",
     "waitress==3.0.2",

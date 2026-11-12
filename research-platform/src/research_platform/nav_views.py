@@ -48,6 +48,11 @@ class LatestResult:
 
 @login_required
 def home(request: HttpRequest) -> HttpResponse:
+    return render(request, "research_platform/home.html", home_context())
+
+
+def home_context() -> dict[str, object]:
+    """What the home page shows."""
     places = [
         Place("records", "Records", Record.objects.count()),
         Place("datasets", "Datasets", Dataset.objects.count()),
@@ -55,7 +60,7 @@ def home(request: HttpRequest) -> HttpResponse:
         Place("hypotheses", "Hypotheses", Hypothesis.objects.count()),
     ]
     results = AnalysisRun.objects.select_related("hypothesis").order_by("-pk")[:LATEST]
-    context = {
+    return {
         "places": places,
         "empty": places[0].count == 0,
         "runs": CalculationRun.objects.select_related("dataset").order_by("-pk")[:LATEST],
@@ -69,7 +74,6 @@ def home(request: HttpRequest) -> HttpResponse:
             for each in results
         ],
     }
-    return render(request, "research_platform/home.html", context)
 
 
 @login_required

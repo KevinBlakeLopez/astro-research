@@ -7,6 +7,7 @@ from django.contrib.auth import views as auth_views
 from django.urls import path, re_path
 
 from research_platform import (
+    demo_views,
     desktop_views,
     eclipses_views,
     features_views,
@@ -91,6 +92,7 @@ urlpatterns = [
     path("features/", features_views.features_list, name="features"),
     path("features/new/", features_views.feature_new, name="feature-new"),
     path("features/<int:pk>/", features_views.feature, name="feature"),
+    path("demo/gauquelin/", demo_views.gauquelin, name="demo-gauquelin"),
     path("desktop/login/<str:token>/", desktop_views.login, name="desktop-login"),
     re_path(r"^static/(?P<path>.*)$", desktop_views.static, name="desktop-static"),
     path("hypotheses/", hypotheses_views.hypotheses_list, name="hypotheses"),

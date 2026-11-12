@@ -34,6 +34,7 @@ the seed for the controls. The downloaded data and these files stay out of the r
 import argparse
 import csv
 import hashlib
+import io
 import math
 import re
 from collections import Counter
@@ -101,12 +102,25 @@ class Conversion:
 
 def read(path: Path) -> list[dict[str, str]]:
     """The file's rows; raises SourceRefused if a column it needs is missing."""
-    with path.open(newline="", encoding="utf-8-sig") as file:
-        reader = csv.DictReader(file)
-        missing = sorted(set(NEEDED) - set(reader.fieldnames or []))
-        if missing:
-            raise SourceRefused(f"the file has no {_either(missing)} column")
-        return [dict(row) for row in reader]
+    return read_text(path.read_text(encoding="utf-8-sig", newline=""))
+
+
+def read_text(text: str) -> list[dict[str, str]]:
+    """The rows of a file's text; raises SourceRefused if a column it needs is missing."""
+    reader = csv.DictReader(io.StringIO(text, newline=""))
+    missing = sorted(set(NEEDED) - set(reader.fieldnames or []))
+    if missing:
+        raise SourceRefused(f"the file has no {_either(missing)} column")
+    return [dict(row) for row in reader]
+
+
+def csv_text(columns: Sequence[str], rows: list[dict[str, str]]) -> str:
+    """The rows as a CSV file's text, with `columns` as its header row."""
+    out = io.StringIO()
+    writer = csv.DictWriter(out, fieldnames=columns)  # RFC 4180's \r\n
+    writer.writeheader()
+    writer.writerows(rows)
+    return out.getvalue()
 
 
 def convert(rows: Sequence[dict[str, str]]) -> Conversion:
@@ -257,10 +271,7 @@ def _rows(count: int) -> str:
 
 
 def _write(path: Path, columns: Sequence[str], rows: list[dict[str, str]]) -> None:
-    with path.open("w", newline="", encoding="utf-8") as file:
-        writer = csv.DictWriter(file, fieldnames=columns)  # RFC 4180's \r\n
-        writer.writeheader()
-        writer.writerows(rows)
+    path.write_text(csv_text(columns, rows), encoding="utf-8", newline="")
 
 
 def main(argv: Sequence[str] | None = None) -> int:

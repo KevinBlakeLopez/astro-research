@@ -17,15 +17,6 @@
   </label>
   <button type="submit">Run</button>
 </form>
-{# Pressing the button disables it, showing data-once, so a run that takes a while isn't started twice. A page shown again from the back-forward cache gets its button back. #}
-<script>
-for (const form of document.querySelectorAll("form[data-once]")) {
-  const button = form.querySelector("button[type=submit]");
-  const label = button.textContent;
-  form.addEventListener("submit", () => { button.disabled = true; button.textContent = form.dataset.once; });
-  addEventListener("pageshow", () => { button.disabled = false; button.textContent = label; });
-}
-</script>
 {% if desktop %}
 <p>A run computes a chart for each of the {{ size }} records, reusing any already stored under the same settings, then opens the run. A large dataset takes longer, and the window waits until it's done: 4,090 records took about 11 seconds on an Apple silicon Mac.</p>
 {% else %}

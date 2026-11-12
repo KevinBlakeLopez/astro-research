@@ -22,6 +22,9 @@ time when the champion it takes it from was born at the same time; that isn't av
 seed gives the same controls on any Python version, since no random-number generator is
 involved.
 
+`read_text` reads a file's text as `read` reads the file, and `csv_text` gives the text the
+command writes to a file, for the desktop app's demo (test_demo.py), which has no files.
+
 Every person here is made up.
 """
 
@@ -291,6 +294,17 @@ def test_a_byte_order_mark_is_accepted(tmp_path: Path) -> None:
     assert [birth.label for birth in og.convert(og.read(path)).champions] == ["A1-1"]
 
 
+def test_a_file_s_text_reads_as_the_file_does(tmp_path: Path) -> None:
+    path = source_file(tmp_path, [person(1), person(2)])
+    assert og.read_text(path.read_text(encoding="utf-8")) == og.read(path)
+
+
+def test_a_text_without_a_column_it_needs_is_refused() -> None:
+    header = ",".join(column for column in HEADER if column not in ("TZO", "DATE-UT"))
+    with pytest.raises(og.SourceRefused, match="the file has no DATE-UT or TZO column"):
+        og.read_text(header + "\n")
+
+
 # --- Controls -------------------------------------------------------------------------------
 
 
@@ -477,3 +491,17 @@ def test_the_files_are_utf_8_csv(tmp_path: Path) -> None:
     text = (out / "champions.csv").read_bytes().decode("utf-8")
     assert not text.startswith("﻿")
     assert next(csv.reader(io.StringIO(text))) == IMPORT_COLUMNS
+
+
+def test_the_csv_text_is_the_file_the_command_writes(tmp_path: Path) -> None:
+    rows = [person(1), person(2), person(3)]
+    out = tmp_path / "converted"
+    assert og.main([str(source_file(tmp_path, rows)), "--seed", "1", "--out", str(out)]) == 0
+    champions = og.import_rows(converted(tmp_path, rows).champions, "champion")
+    written = (out / "champions.csv").read_bytes().decode("utf-8")  # its \r\n line ends kept
+    assert og.csv_text(og.IMPORT_COLUMNS, champions) == written
+
+
+def test_the_csv_text_is_rfc_4180_s() -> None:
+    rows = [{"a": "1", "b": "x, y"}, {"a": "2", "b": 'say "hi"'}]
+    assert og.csv_text(("a", "b"), rows) == 'a,b\r\n1,"x, y"\r\n2,"say ""hi"""\r\n'

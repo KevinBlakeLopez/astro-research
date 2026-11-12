@@ -526,10 +526,18 @@ uv run python packaging/macos/build.py
   4. **The build record written on GitHub's runner** passed the binding check in the downloaded app, and without it the check refused.
 
   So an ad-hoc-signed app built on another machine does open, after two trips to **Open Anyway**, although Briefcase's docs say such an app won't run on other computers. Not tried yet: a Mac without Xcode, an older macOS, and calculating a chart in the downloaded app's window.
+- **Releases are made by hand,** from a workflow run whose disk image has been opened on a Mac, before the run's download expires. The release is tagged at the commit that run built:
+
+  ```bash
+  gh run download RUN -n astro-research-mac -D FOLDER
+  cp "FOLDER/Astro Research-X.Y.Z.dmg" FOLDER/Astro-Research-X.Y.Z.dmg
+  gh release create vX.Y.Z --target COMMIT --prerelease --title TITLE --notes-file NOTES FOLDER/Astro-Research-X.Y.Z.dmg
+  ```
+
+  The copy drops the space from the file's name, since GitHub's docs say it renames uploaded files with special characters. The notes give testers the two trips to **Open Anyway**. A release's files download without a GitHub login (checked: a request without one reached the file), and GitHub counts each file's downloads (`download_count` in its API). The first, [v0.1.0](https://github.com/KevinBlakeLopez/astro-research/releases/tag/v0.1.0), is a pre-release of run 42946371418's disk image, tagged at dfcf02d; GitHub's SHA-256 for the file matches the copy opened in the steps above.
 
 **Not yet:**
 - **Installers:** a Windows one, and one an Intel Mac can run, which would need Swiss Ephemeris built from source. Signing with an Apple Developer ID ($99 a year) would let a Mac open the app without **Open Anyway**.
-- **A download for testers without a GitHub account.** A workflow run's download needs a GitHub login, and is kept for 14 days.
 - **A way to back up the data.**
 - **Data entry friendlier than the admin,** beyond importing a CSV file.
 - **An open question:** whether the window's file picker works, which the import page needs. pywebview 6.2.1's macOS code opens a file panel for a file input (read in its source, `webView_runOpenPanelWithParameters…` in `platforms/cocoa.py`), but that hasn't been run; step 8 below checks it.

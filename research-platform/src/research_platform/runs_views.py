@@ -3,7 +3,10 @@
 A run started from a dataset's page runs there and then, in the request, and opens when it's
 done, finished or failed. Above `RUN_LIMIT` records a dataset is left to `compute_dataset`:
 500 records take 4.1-4.3 s from the form when every chart is computed, and 0.6 s run again
-(measured). Runs are never changed or deleted here; a run is the record of what was computed.
+(measured). The desktop app has no such limit, since it has no shared server to keep requests
+short for and its user has no command line: its window waits for the run, and the page's Run
+button is disabled once pressed, so a long run isn't started twice. Runs are never changed or
+deleted here; a run is the record of what was computed.
 
 A run's outcomes download as CSV, one row per record. Its charts download as JSON Lines: each
 stored chart once, in the order of its first record, exactly as stored. Records with the same
@@ -35,6 +38,7 @@ from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from datetime import timedelta
 
+from django.conf import settings as django_settings
 from django.contrib.auth.decorators import login_required
 from django.db.models import Count, Max, Min, QuerySet
 from django.http import HttpRequest, HttpResponse, StreamingHttpResponse
@@ -385,6 +389,8 @@ def _run_settings(chosen: Dataset, aspects: str, time_scale: str) -> ChartSettin
         settings = chart_settings(aspects, time_scale)
     except InvalidSettings as error:
         raise InvalidRequest(str(error)) from error
+    if django_settings.RESEARCH_DESKTOP:  # no shared server to keep requests short for
+        return settings
     size = chosen.records.count()
     if size > RUN_LIMIT:
         raise InvalidRequest(

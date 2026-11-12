@@ -1,13 +1,17 @@
 """Datasets, runs and stored charts in the web interface.
 
 A dataset's page lists its records and runs, and starts a run (a POST, with Django's CSRF check)
-for up to 500 records; larger datasets are for `compute_dataset`. A run's page shows what it ran
+for up to 500 records; larger datasets are for `compute_dataset`. In the desktop app, which has
+no shared server to keep requests short for, it runs any number, and its Run button is disabled
+once pressed, so a long run can't be started twice. A run's page shows what it ran
 with and each record's outcome, and downloads its outcomes as CSV and its stored charts as JSON
 Lines, exactly as stored. A stored chart's page reads the document back and shows it; it has no
 settings, since a stored chart's are fixed. Runs are never changed or deleted here.
 
 Markup the tests rely on: rows carry data-dataset, data-record and data-run with the object's
-id; outcome rows data-outcome="<record id>" with data-kind="chart" or data-kind="refusal".
+id; outcome rows data-outcome="<record id>" with data-kind="chart" or data-kind="refusal". A
+form whose button is disabled once pressed carries data-once, and the page's script for it
+selects form[data-once].
 """
 
 import csv
@@ -23,6 +27,7 @@ from typing import Any
 import pytest
 from django.test import Client
 from django.urls import reverse
+from pytest_django.fixtures import Settings
 
 from astro_research.chart import ENGINE_VERSION, BirthRecord, ChartSettings
 from astro_research.civil_time import UtcTime, ZonedLocalTime
@@ -283,6 +288,46 @@ def test_a_dataset_over_500_records_is_left_to_the_command(
     assert 'data-error="request"' in text
     assert "501 records" in text and "500" in text and "compute_dataset" in text
     assert not CalculationRun.objects.exists()
+
+
+@pytest.mark.django_db
+def test_in_the_app_a_dataset_over_500_records_runs_from_its_page(
+    admin_client: Client, subject: Subject, source: Source, settings: Settings
+) -> None:
+    settings.RESEARCH_DESKTOP = True
+    dataset = large(subject, source, 501)
+    response = admin_client.post(reverse("dataset-run", args=[dataset.pk]), FORM)
+    assert response.status_code == 302, response.status_code
+    run = CalculationRun.objects.get()
+    assert response["Location"] == reverse("run", args=[run.pk])
+    assert run.status == CalculationRun.Status.FINISHED
+    assert (run.computed, run.reused, run.refused) == (1, 500, 0)
+
+
+@pytest.mark.django_db
+def test_in_the_app_a_dataset_s_page_says_a_large_run_takes_longer(
+    admin_client: Client, dataset: Dataset, settings: Settings
+) -> None:
+    address = reverse("dataset", args=[dataset.pk])
+    settings.RESEARCH_DESKTOP = True
+    text = page(admin_client, address)
+    assert "compute_dataset" not in text and "Up to" not in text
+    assert "the window waits until it's done" in text
+    assert "4,090 records took about 11 seconds" in text
+    settings.RESEARCH_DESKTOP = False
+    text = page(admin_client, address)
+    assert "Up to 500 records run here" in text and "compute_dataset" in text
+    assert "the window waits" not in text
+
+
+@pytest.mark.django_db
+def test_the_run_button_is_disabled_once_pressed(admin_client: Client, dataset: Dataset) -> None:
+    # Only the markup can be checked here; the window's checklist presses the button.
+    text = page(admin_client, reverse("dataset", args=[dataset.pk]))
+    action = reverse("dataset-run", args=[dataset.pk])
+    form = re.search(rf'<form[^>]*action="{action}"[^>]*>', text)
+    assert form is not None and "data-once" in form.group(0)
+    assert "form[data-once]" in text
 
 
 @pytest.mark.django_db

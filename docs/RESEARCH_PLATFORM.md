@@ -333,6 +333,8 @@ It runs on this machine only: it answers on 127.0.0.1 and localhost, and every p
   - **What's known about its subjects:** each variable, by name, with how many of the dataset's subjects have a value ("2 of 3"). A subject with several records counts once. Then each category's count, zeros included, a number's range and unit, or the yes and no counts.
   - **Starting a run:** the page's form names the aspect angles and time scale, as the chart page's does, and is a POST with Django's CSRF check. The run is `run_dataset`'s, in the request, and its page opens when it's done, finished or failed. A failed run's traceback goes to the server's log.
   - **Up to 500 records.** 500 records took 4.1–4.3 s when every chart was computed, and 0.6 s run again (measured). A larger dataset is refused with the `compute_dataset` command to run it with.
+  - **In the desktop app, any number.** It has no shared server to keep requests short for, and its user has no command line. The page says the window waits until the run is done, and that 4,090 records took about 11 seconds on an Apple silicon Mac: the Gauquelin demo's 10.7 s, measured outside the window.
+  - **The Run button is disabled once pressed,** reading "Running…", so a long run isn't started twice. A page shown again from the browser's back-forward cache gets its button back. Only the markup is tested; desktop step 9 below presses it.
 - **A run** (`/runs/<id>/`) shows what it ran with:
   - its status and any error;
   - its settings, as the form takes them;
@@ -552,6 +554,7 @@ uv run python packaging/macos/build.py
 6. From the run's page, follow a chart, then press **← Back**. Expect the run's page again.
 7. Close the window. Expect the command to finish. Run it again: expect the window logged in again, on the home page, with step 3's record and dataset counted.
 8. Follow **Import**, and press the file field's button. Expect the system's file picker. Choose the CSV from browser step 74, choose a source, and press **Upload and check**. Expect the waiting file's page with the file's rows.
+9. On the page of a dataset of more than 500 records, such as the Gauquelin demo's, press **Run**. Expect the button to turn grey and read "Running…" until the run's page opens, and no second run when it's pressed again meanwhile. Then press **← Back**. Expect the dataset's page with its **Run** button usable again.
 
 ## Tests
 

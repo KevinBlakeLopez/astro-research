@@ -1,6 +1,6 @@
 """Converting the Open Gauquelin Database's group A1 into files the CSV import takes.
 
-`scripts/convert_open_gauquelin.py` reads a group's CSV (comma-separated, with the columns GQID,
+`research_platform.open_gauquelin` reads a group's CSV (comma-separated, with the columns GQID,
 DATE, TZO, DATE-UT, LG and LAT among others) and writes three files:
 
 - champions.csv: a row per person kept, in the import's columns, with group `champion`;
@@ -33,10 +33,10 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-import convert_open_gauquelin as og
 import pytest
 
 from astro_research.civil_time import resolve
+from research_platform import open_gauquelin as og
 from research_platform.csv_import import plan_import, read_text
 from research_platform.models import Category, Source, Variable
 

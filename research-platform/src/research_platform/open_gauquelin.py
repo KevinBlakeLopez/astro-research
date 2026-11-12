@@ -1,6 +1,6 @@
 """Convert a group of the Open Gauquelin Database into files the platform's CSV import takes.
 
-    uv run python research-platform/scripts/convert_open_gauquelin.py A1.csv --seed 1 --out DIR
+    python -m research_platform.open_gauquelin A1.csv --seed 1 --out DIR
 
 The input is a group's CSV from opengauquelin.org, unzipped (comma-separated, with the columns
 GQID, DATE, TZO, DATE-UT, LG and LAT among others). Three files are written to DIR:
@@ -27,7 +27,7 @@ and refusing it would make the controls unlike the champions. No random-number g
 involved, so the same seed gives the same controls on any Python version.
 
 The import needs a category variable `group` with the categories champion and control, and a
-source for each file: the database's group for the champions, and this script, its commit and
+source for each file: the database's group for the champions, and this converter, its commit and
 the seed for the controls. The downloaded data and these files stay out of the repository.
 """
 

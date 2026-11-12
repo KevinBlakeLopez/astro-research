@@ -200,7 +200,7 @@ cd research-platform && uv run python manage.py import_csv subjects.csv --source
 
 ## A demo dataset: Gauquelin's sports champions
 
-The [Open Gauquelin Database](https://opengauquelin.org/) publishes the Gauquelins' groups of births as CSV files. Group A1 is the 2,088 sports champions of their LERRCP booklet, born 1817–1949 in France, Italy, Belgium, the Netherlands, Algeria, Germany and Monaco. `scripts/convert_open_gauquelin.py` turns such a file into two files the CSV import takes: the champions, and a shuffled control for each. A hypothesis can then compare the champions with the controls.
+The [Open Gauquelin Database](https://opengauquelin.org/) publishes the Gauquelins' groups of births as CSV files. Group A1 is the 2,088 sports champions of their LERRCP booklet, born 1817–1949 in France, Italy, Belgium, the Netherlands, Algeria, Germany and Monaco. `research_platform.open_gauquelin` turns such a file into two files the CSV import takes: the champions, and a shuffled control for each. A hypothesis can then compare the champions with the controls.
 
 **The data's license.** The site says its data are under a Creative Commons license, and its About page lists CC BY-SA 4.0 with the GPL and the FDL, without saying which covers the data. Neither the downloaded file nor the converted files are kept in this repository.
 
@@ -226,7 +226,7 @@ Across all the rows, `DATE` and `DATE-UT` are more than 3 hours apart in 18, and
 **Converting and importing.** Download `A1.csv.zip` from the site's [historical datasets](https://opengauquelin.org/history) and unzip it. Then:
 
 ```bash
-cd research-platform && uv run python scripts/convert_open_gauquelin.py ~/Downloads/A1.csv --seed 1 --out ~/Downloads/a1-converted
+uv run --package research-platform python -m research_platform.open_gauquelin ~/Downloads/A1.csv --seed 1 --out ~/Downloads/a1-converted
 ```
 
 It writes three files:
@@ -238,7 +238,7 @@ It won't overwrite any of them. Before importing:
 - **Define a category variable** `group`, with the categories `champion` and `control`, in the admin.
 - **Add two sources:**
   - one for the champions: the database's group A1 and the file's date;
-  - one for the controls: this script, its commit and the seed.
+  - one for the controls: this converter, its commit and the seed.
 - **Add a dataset.**
 
 Then run `import_csv` on each file, with its own source and `--dataset`. The dataset is computed and tested like any other (see [Runs](#runs) and [The research layer](#the-research-layer)).
